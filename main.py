@@ -3,7 +3,7 @@ import streamlit.components.v1 as components
 
 # 페이지 기본 설정
 st.set_page_config(
-    page_title="화학 시약 혼합 & 열역학 자발성 판별 시스템",
+    page_title="화학 시약 혼합 위험성 & 열역학 자발성 판별 시스템",
     page_icon="🧪",
     layout="wide"
 )
@@ -236,7 +236,7 @@ def trigger_explosion_effect():
 # ---------------------------------------------------------
 # 4. 메인 대시보드 UI
 # ---------------------------------------------------------
-st.title("🧪 화학 반응 자발성 판별 & 열역학 시뮬레이터")
+st.title("🧪 화학 시약 혼합 위험성 & 열역학 자발성 판별 시스템")
 st.caption("반응물질과 에너지 조건을 조합하여 생성물을 예측하고, 엔탈피(ΔH)와 엔트로피(ΔS) 변화에 따른 화학적 자발성을 확인하세요.")
 
 col1, col2 = st.columns([1, 1.2])
@@ -357,4 +357,3 @@ try:
 
 except Exception as e:
     st.error(f"데이터 연결 오류: {e}")
-
