@@ -3,7 +3,7 @@ import streamlit.components.v1 as components
 
 # 페이지 기본 설정
 st.set_page_config(
-    page_title="화학 반응 자발성 & 열역학 시뮬레이터",
+    page_title="화학 시약 혼합 & 열역학 자발성 판별 시스템",
     page_icon="🧪",
     layout="wide"
 )
