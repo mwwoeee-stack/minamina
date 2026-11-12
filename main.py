@@ -299,3 +299,62 @@ with col2:
             
         else:
             st.warning("⚠️ 선택된 조합으로는 상온 조건에서 유의미한 화학 반응이 일어나지 않습니다. 다른 시약이나 에너지 조건을 조합해 보세요.")
+
+# 실제 화학 반응 데이터베이스 연결
+import requests
+import pandas as pd
+from io import StringIO
+
+@st.cache_data(ttl=86400)
+def load_rhea_data():
+    url = "https://www.rhea-db.org/rhea/"
+
+    params = {
+        "query": "",
+        "columns": "rhea-id,equation",
+        "format": "tsv",
+        "limit": 1000
+    }
+
+    response = requests.get(
+        url, params=params, timeout=30
+    )
+    response.raise_for_status()
+
+    return pd.read_csv(
+        StringIO(response.text),
+        sep="\t"
+    )
+
+st.divider()
+st.header("🔬 실제 화학 반응식 검색")
+
+try:
+    reactions_df = load_rhea_data()
+
+    search_word = st.text_input(
+        "검색할 화학 물질을 입력하세요",
+        placeholder="예: ATP, glucose"
+    )
+
+    if search_word:
+        filtered = reactions_df[
+            reactions_df["Equation"].str.contains(
+                search_word,
+                case=False,
+                na=False,
+                regex=False
+            )
+        ]
+    else:
+        filtered = reactions_df
+
+    st.write(f"검색 결과: {len(filtered)}개")
+    st.dataframe(
+        filtered,
+        use_container_width=True
+    )
+
+except Exception as e:
+    st.error(f"데이터 연결 오류: {e}")
+
