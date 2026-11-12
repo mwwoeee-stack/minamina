@@ -104,57 +104,134 @@ def clear_flask():
 # ---------------------------------------------------------
 def trigger_explosion_effect():
     html_code = """
-    <style>
-    @keyframes screenShake {
-        0% { transform: translate(1px, 1px) rotate(0deg); }
-        10% { transform: translate(-3px, -2px) rotate(-1deg); }
-        20% { transform: translate(-5px, 0px) rotate(1deg); }
-        30% { transform: translate(5px, 2px) rotate(0deg); }
-        40% { transform: translate(3px, -1px) rotate(1deg); }
-        50% { transform: translate(-3px, 2px) rotate(-1deg); }
-        60% { transform: translate(-5px, 1px) rotate(0deg); }
-        70% { transform: translate(5px, 1px) rotate(-1deg); }
-        80% { transform: translate(-3px, -1px) rotate(1deg); }
-        90% { transform: translate(3px, 2px) rotate(0deg); }
-        100% { transform: translate(1px, -2px) rotate(-1deg); }
-    }
+    <script>
+    (function() {
+        const parentDoc = window.parent.document;
 
-    @keyframes flashBang {
-        0% { background: rgba(255, 68, 68, 0.7); }
-        50% { background: rgba(255, 255, 255, 0.9); }
-        100% { background: transparent; }
-    }
+        // 1. 기존 폭발 오버레이가 남아있다면 제거 (재실행 대응)
+        const oldOverlay = parentDoc.getElementById('chem-explosion-overlay');
+        if (oldOverlay) oldOverlay.remove();
+        const oldStyle = parentDoc.getElementById('chem-explosion-style');
+        if (oldStyle) oldStyle.remove();
 
-    body {
-        animation: screenShake 0.6s ease-in-out infinite alternate;
-    }
+        // 2. 부모 창(전체 Streamlit 앱) 흔들림 & 섬광 CSS 주입
+        const style = parentDoc.createElement('style');
+        style.id = 'chem-explosion-style';
+        style.innerHTML = `
+            @keyframes appShake {
+                0%, 100% { transform: translate(0, 0) rotate(0deg); }
+                10% { transform: translate(-12px, -8px) rotate(-1.5deg); }
+                20% { transform: translate(12px, 6px) rotate(1.5deg); }
+                30% { transform: translate(-10px, 8px) rotate(-1deg); }
+                40% { transform: translate(10px, -6px) rotate(1deg); }
+                50% { transform: translate(-8px, -4px) rotate(-0.8deg); }
+                60% { transform: translate(8px, 4px) rotate(0.8deg); }
+                70% { transform: translate(-5px, 2px) rotate(-0.5deg); }
+                80% { transform: translate(5px, -2px) rotate(0.5deg); }
+            }
+            .stApp {
+                animation: appShake 0.75s cubic-bezier(.36,.07,.19,.97) both !important;
+            }
+        `;
+        parentDoc.head.appendChild(style);
 
-    .flash-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        animation: flashBang 0.8s ease-out forwards;
-        pointer-events: none;
-        z-index: 9999;
-    }
+        // 3. 전체 화면을 덮는 투명 Canvas 생성
+        const canvas = parentDoc.createElement('canvas');
+        canvas.id = 'chem-explosion-overlay';
+        canvas.style.position = 'fixed';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100vw';
+        canvas.style.height = '100vh';
+        canvas.style.pointerEvents = 'none';
+        canvas.style.zIndex = '999999';
+        canvas.width = window.parent.innerWidth;
+        canvas.height = window.parent.innerHeight;
+        parentDoc.body.appendChild(canvas);
 
-    .danger-banner {
-        text-align: center;
-        padding: 15px;
-        background-color: #ff3333;
-        color: white;
-        font-weight: 800;
-        font-size: 20px;
-        border-radius: 8px;
-        box-shadow: 0 0 20px rgba(255, 51, 51, 0.8);
-    }
-    </style>
-    <div class="flash-overlay"></div>
-    <div class="danger-banner">⚠️ 위험: 급격한 연소·폭발 반응 조건이 감지되었습니다!</div>
+        const ctx = canvas.getContext('2d');
+        const centerX = canvas.width * 0.65; // 우측 반응계 영역 중심
+        const centerY = canvas.height * 0.45;
+
+        // 4. 화염 파티클 및 연기 생성
+        const particles = [];
+        const colors = ['#ffffff', '#fff200', '#ff9f1a', '#ff3838', '#4b4b4b'];
+
+        for (let i = 0; i < 160; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 18 + 3;
+            particles.push({
+                x: centerX,
+                y: centerY,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                radius: Math.random() * 18 + 5,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                alpha: 1,
+                decay: Math.random() * 0.02 + 0.015
+            });
+        }
+
+        let shockwaveRadius = 10;
+        let flashAlpha = 0.85;
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 초기 섬광 효과
+            if (flashAlpha > 0) {
+                ctx.fillStyle = `rgba(255, 100, 50, ${flashAlpha})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                flashAlpha -= 0.05;
+            }
+
+            // 충격파 링 확산
+            if (shockwaveRadius < canvas.width * 0.8) {
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, shockwaveRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255, 220, 120, ${1 - shockwaveRadius / (canvas.width * 0.8)})`;
+                ctx.lineWidth = 14;
+                ctx.stroke();
+                shockwaveRadius += 28;
+            }
+
+            // 불꽃 파티클 업데이트
+            let alive = false;
+            for (let p of particles) {
+                if (p.alpha > 0) {
+                    alive = true;
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vx *= 0.94; // 공기 저항 감속
+                    p.vy *= 0.94;
+                    p.vy += 0.15; // 미세 중력
+                    p.alpha -= p.decay;
+
+                    ctx.save();
+                    ctx.globalAlpha = Math.max(0, p.alpha);
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = p.color;
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            if (alive || flashAlpha > 0) {
+                requestAnimationFrame(animate);
+            } else {
+                canvas.remove();
+            }
+        }
+
+        animate();
+    })();
+    </script>
+    <div style="text-align:center; padding:15px; background:#ff3333; color:white; font-weight:800; font-size:20px; border-radius:8px; box-shadow:0 0 20px rgba(255,51,51,0.8);">
+        ⚠️ 위험: 급격한 연소·폭발 반응 조건이 감지되었습니다!
+    </div>
     """
-    components.html(html_code, height=90)
+    components.html(html_code, height=85)
 
 # ---------------------------------------------------------
 # 4. 메인 대시보드 UI
