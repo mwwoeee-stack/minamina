@@ -1,4 +1,2 @@
-streamlit
-pandas
-requests
-
+streamlit>=1.32
+requests>=2.31
