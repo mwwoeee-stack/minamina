@@ -1,4 +1,8 @@
+
 import streamlit as st
+import requests
+from PIL import Image
+from io import BytesIO
 
 st.set_page_config(
     page_title="세계 관광 명소 탐색",
@@ -10,8 +14,6 @@ st.title("🌏 세계 관광 명소 탐색 시스템")
 st.write("국가와 도시를 선택하여 주요 관광지를 탐색해 보세요.")
 
 # 국가별 도시 및 관광지 데이터
-# 형식: "관광지 이름": (위도, 경도)
-
 TOURIST_DATA = {
     "대한민국": {
         "서울": {
@@ -127,7 +129,183 @@ TOURIST_DATA = {
     }
 }
 
-# 국가 선택
+# 한국어 위키백과 문서 제목
+# 검색 결과가 다른 장소로 연결되지 않도록 직접 지정
+WIKI_TITLES = {
+    "경복궁": "경복궁",
+    "남산서울타워": "N서울타워",
+    "롯데월드타워": "롯데월드타워",
+    "창덕궁": "창덕궁",
+    "광화문광장": "광화문광장",
+    "해운대해수욕장": "해운대해수욕장",
+    "광안대교": "광안대교",
+    "감천문화마을": "감천문화마을",
+    "해동용궁사": "해동 용궁사",
+    "광안리해수욕장": "광안리해수욕장",
+    "도쿄 타워": "도쿄 타워",
+    "도쿄 스카이트리": "도쿄 스카이트리",
+    "센소지": "센소지",
+    "메이지 신궁": "메이지 신궁",
+    "시부야 스크램블 교차로": "시부야 스크램블 교차로",
+    "기요미즈데라": "기요미즈데라",
+    "후시미 이나리 신사": "후시미 이나리 신사",
+    "금각사": "금각사",
+    "아라시야마 대나무숲": "아라시야마",
+    "니조성": "니조성",
+    "자금성": "자금성",
+    "천안문광장": "톈안먼 광장",
+    "천단공원": "천단",
+    "이화원": "이화원",
+    "팔달령 만리장성": "팔달령",
+    "동방명주탑": "동방명주탑",
+    "와이탄": "와이탄",
+    "예원": "예원",
+    "상하이 타워": "상하이 타워",
+    "난징루": "난징루",
+    "자유의 여신상": "자유의 여신상",
+    "타임스 스퀘어": "타임스 스퀘어",
+    "센트럴 파크": "센트럴 파크",
+    "엠파이어 스테이트 빌딩": "엠파이어 스테이트 빌딩",
+    "브루클린 브리지": "브루클린 교",
+    "금문교": "금문교",
+    "알카트라즈섬": "알카트라즈섬",
+    "피어 39": "피어 39",
+    "롬바드 스트리트": "롬바드 스트리트",
+    "팰리스 오브 파인 아츠": "팰리스 오브 파인 아츠",
+    "에펠탑": "에펠탑",
+    "루브르 박물관": "루브르 박물관",
+    "개선문": "에투알 개선문",
+    "노트르담 대성당": "파리 노트르담 대성당",
+    "사크레쾨르 대성당": "사크레쾨르 대성당",
+    "영국인 산책로": "영국인 산책로",
+    "니스 구시가지": "니스",
+    "캐슬 힐": "니스",
+    "마세나 광장": "마세나 광장",
+    "니스 항구": "니스",
+    "오벨리스코": "부에노스아이레스 오벨리스크",
+    "카사 로사다": "카사 로사다",
+    "라 보카 카미니토": "카미니토",
+    "레콜레타 묘지": "레콜레타 묘지",
+    "콜론 극장": "콜론 극장",
+    "독립광장": "멘도사",
+    "산마르틴 공원": "헤네랄 산마르틴 공원",
+    "세로 데 라 글로리아": "멘도사",
+    "에스파냐 광장": "멘도사",
+    "멘도사 중앙시장": "멘도사",
+    "시드니 오페라 하우스": "시드니 오페라 하우스",
+    "하버 브리지": "시드니 하버 브리지",
+    "본다이 비치": "본다이 비치",
+    "달링 하버": "달링 하버",
+    "타롱가 동물원": "타롱가 동물원",
+    "플린더스 스트리트역": "플린더스 스트리트역",
+    "페더레이션 광장": "페더레이션 광장",
+    "퀸 빅토리아 마켓": "퀸 빅토리아 마켓",
+    "왕립 식물원": "멜버른 왕립 식물원",
+    "브라이턴 비치": "브라이턴 비치"
+}
+
+# 일반 도시 문서 사진이 관광지 사진으로
+# 잘못 표시되는 것을 방지
+UNSPECIFIC_TITLES = {"니스", "멘도사"}
+
+HEADERS = {
+    "User-Agent": "WorldTouristExplorer/1.0 (educational Streamlit project)",
+    "Accept": "application/json"
+}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_wikipedia_image(place_name):
+    """관광지에 해당하는 위키백과 대표 사진 주소 조회"""
+
+    title = WIKI_TITLES.get(place_name, place_name)
+
+    if title in UNSPECIFIC_TITLES:
+        return None
+
+    api_url = "https://ko.wikipedia.org/w/api.php"
+
+    params = {
+        "action": "query",
+        "format": "json",
+        "prop": "pageimages",
+        "titles": title,
+        "pithumbsize": 900,
+        "redirects": 1
+    }
+
+    try:
+        response = requests.get(
+            api_url,
+            params=params,
+            headers=HEADERS,
+            timeout=12
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        pages = data.get("query", {}).get("pages", {})
+
+        for page in pages.values():
+            if "missing" in page:
+                continue
+
+            thumbnail = page.get("thumbnail", {})
+            image_url = thumbnail.get("source")
+
+            if image_url:
+                return image_url
+
+    except (requests.RequestException, ValueError):
+        pass
+
+    return None
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def download_image(image_url):
+    """사진을 실제로 다운로드하여 정상 이미지인지 확인"""
+
+    if not image_url:
+        return None
+
+    try:
+        response = requests.get(
+            image_url,
+            headers=HEADERS,
+            timeout=15
+        )
+        response.raise_for_status()
+
+        content_type = response.headers.get(
+            "Content-Type", ""
+        ).lower()
+
+        if not content_type.startswith("image/"):
+            return None
+
+        # 이미지 파일이 실제로 열리는지 확인
+        image = Image.open(BytesIO(response.content))
+        image.load()
+
+        # Streamlit에 안전하게 표시할 수 있도록 PNG로 변환
+        if image.mode not in ("RGB", "RGBA"):
+            image = image.convert("RGB")
+
+        output = BytesIO()
+        image.save(output, format="PNG")
+
+        return output.getvalue()
+
+    except (
+        requests.RequestException,
+        OSError,
+        ValueError
+    ):
+        return None
+
+
+# 국가 및 도시 선택
 st.subheader("🔎 관광지 검색")
 
 col1, col2 = st.columns(2)
@@ -144,7 +322,6 @@ with col2:
         list(TOURIST_DATA[country].keys())
     )
 
-# 도시별 관광지 목록
 places = TOURIST_DATA[country][city]
 
 st.subheader(f"📍 {city}의 주요 관광지")
@@ -156,14 +333,33 @@ place_name = st.selectbox(
 
 lat, lon = places[place_name]
 
-# 선택한 관광지 정보
 st.divider()
-
 st.header(f"📍 {place_name}")
 
 st.write(f"**국가:** {country}")
 st.write(f"**도시:** {city}")
 
+# 관광지 사진 표시
+st.subheader("📸 관광지 사진")
+
+with st.spinner("관광지 사진을 확인하고 있습니다..."):
+    image_url = get_wikipedia_image(place_name)
+    image_data = download_image(image_url)
+
+if image_data:
+    st.image(
+        image_data,
+        caption=f"{place_name} - 위키백과",
+        width="stretch"
+    )
+    st.caption("사진 출처: 위키백과 / Wikimedia Commons")
+else:
+    st.info(
+        "현재 이 관광지의 사진을 불러올 수 없습니다. "
+        "관광지 위치와 지도는 정상적으로 이용할 수 있습니다."
+    )
+
+# 지도 표시
 st.subheader("🗺️ 관광지 위치")
 
 st.map(
@@ -171,4 +367,4 @@ st.map(
     zoom=13
 )
 
-st.success("관광지 목록과 지도 표시가 완료되었습니다.")
+st.success("관광지 검색 및 지도 기능이 정상적으로 실행되었습니다.")
