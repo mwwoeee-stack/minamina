@@ -1,4 +1,3 @@
-
 import streamlit as st
 import requests
 from PIL import Image
@@ -13,7 +12,7 @@ st.set_page_config(
 st.title("🌏 세계 관광 명소 탐색 시스템")
 st.write("국가와 도시를 선택하여 주요 관광지를 탐색해 보세요.")
 
-# 국가별 도시 및 관광지 데이터
+# 국가별 관광지 및 좌표
 TOURIST_DATA = {
     "대한민국": {
         "서울": {
@@ -129,8 +128,7 @@ TOURIST_DATA = {
     }
 }
 
-# 한국어 위키백과 문서 제목
-# 검색 결과가 다른 장소로 연결되지 않도록 직접 지정
+# 관광지와 한국어 위키백과 문서 연결
 WIKI_TITLES = {
     "경복궁": "경복궁",
     "남산서울타워": "N서울타워",
@@ -178,20 +176,20 @@ WIKI_TITLES = {
     "노트르담 대성당": "파리 노트르담 대성당",
     "사크레쾨르 대성당": "사크레쾨르 대성당",
     "영국인 산책로": "영국인 산책로",
-    "니스 구시가지": "니스",
-    "캐슬 힐": "니스",
+    "니스 구시가지": None,
+    "캐슬 힐": None,
     "마세나 광장": "마세나 광장",
-    "니스 항구": "니스",
+    "니스 항구": None,
     "오벨리스코": "부에노스아이레스 오벨리스크",
     "카사 로사다": "카사 로사다",
     "라 보카 카미니토": "카미니토",
     "레콜레타 묘지": "레콜레타 묘지",
     "콜론 극장": "콜론 극장",
-    "독립광장": "멘도사",
+    "독립광장": None,
     "산마르틴 공원": "헤네랄 산마르틴 공원",
-    "세로 데 라 글로리아": "멘도사",
-    "에스파냐 광장": "멘도사",
-    "멘도사 중앙시장": "멘도사",
+    "세로 데 라 글로리아": None,
+    "에스파냐 광장": None,
+    "멘도사 중앙시장": None,
     "시드니 오페라 하우스": "시드니 오페라 하우스",
     "하버 브리지": "시드니 하버 브리지",
     "본다이 비치": "본다이 비치",
@@ -204,10 +202,6 @@ WIKI_TITLES = {
     "브라이턴 비치": "브라이턴 비치"
 }
 
-# 일반 도시 문서 사진이 관광지 사진으로
-# 잘못 표시되는 것을 방지
-UNSPECIFIC_TITLES = {"니스", "멘도사"}
-
 HEADERS = {
     "User-Agent": "WorldTouristExplorer/1.0 (educational Streamlit project)",
     "Accept": "application/json"
@@ -215,22 +209,31 @@ HEADERS = {
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def get_wikipedia_image(place_name):
-    """관광지에 해당하는 위키백과 대표 사진 주소 조회"""
+def get_wikipedia_data(place_name):
+    """
+    한국어 위키백과에서 관광지의
+    대표 사진, 한국어 설명, 문서 주소를 조회
+    """
 
     title = WIKI_TITLES.get(place_name, place_name)
 
-    if title in UNSPECIFIC_TITLES:
-        return None
+    # 정확히 대응하는 문서가 없는 관광지는
+    # 다른 도시의 사진이나 설명을 잘못 가져오지 않음
+    if title is None:
+        return None, None, None
 
     api_url = "https://ko.wikipedia.org/w/api.php"
 
     params = {
         "action": "query",
         "format": "json",
-        "prop": "pageimages",
+        "prop": "pageimages|extracts|info",
         "titles": title,
         "pithumbsize": 900,
+        "exintro": 1,
+        "explaintext": 1,
+        "exsectionformat": "plain",
+        "inprop": "url",
         "redirects": 1
     }
 
@@ -239,7 +242,7 @@ def get_wikipedia_image(place_name):
             api_url,
             params=params,
             headers=HEADERS,
-            timeout=12
+            timeout=15
         )
         response.raise_for_status()
 
@@ -250,21 +253,44 @@ def get_wikipedia_image(place_name):
             if "missing" in page:
                 continue
 
-            thumbnail = page.get("thumbnail", {})
-            image_url = thumbnail.get("source")
+            image_url = page.get(
+                "thumbnail", {}
+            ).get("source")
 
-            if image_url:
-                return image_url
+            description = page.get("extract", "").strip()
+
+            # 너무 긴 소개는 앞부분만 사용
+            if description:
+                paragraphs = [
+                    p.strip()
+                    for p in description.split("\n")
+                    if p.strip()
+                ]
+
+                description = "\n\n".join(paragraphs)
+
+                if len(description) > 700:
+                    shortened = description[:700]
+                    last_space = shortened.rfind(" ")
+
+                    if last_space > 400:
+                        shortened = shortened[:last_space]
+
+                    description = shortened.rstrip() + "…"
+
+            page_url = page.get("fullurl")
+
+            return image_url, description, page_url
 
     except (requests.RequestException, ValueError):
         pass
 
-    return None
+    return None, None, None
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def download_image(image_url):
-    """사진을 실제로 다운로드하여 정상 이미지인지 확인"""
+    """사진을 다운로드하고 정상 이미지인지 검사"""
 
     if not image_url:
         return None
@@ -284,11 +310,9 @@ def download_image(image_url):
         if not content_type.startswith("image/"):
             return None
 
-        # 이미지 파일이 실제로 열리는지 확인
         image = Image.open(BytesIO(response.content))
         image.load()
 
-        # Streamlit에 안전하게 표시할 수 있도록 PNG로 변환
         if image.mode not in ("RGB", "RGBA"):
             image = image.convert("RGB")
 
@@ -305,7 +329,10 @@ def download_image(image_url):
         return None
 
 
-# 국가 및 도시 선택
+# -------------------------
+# 사용자 화면
+# -------------------------
+
 st.subheader("🔎 관광지 검색")
 
 col1, col2 = st.columns(2)
@@ -319,7 +346,8 @@ with col1:
 with col2:
     city = st.selectbox(
         "도시 선택",
-        list(TOURIST_DATA[country].keys())
+        list(TOURIST_DATA[country].keys()),
+        key=f"city_{country}"
     )
 
 places = TOURIST_DATA[country][city]
@@ -328,23 +356,29 @@ st.subheader(f"📍 {city}의 주요 관광지")
 
 place_name = st.selectbox(
     "관광지 선택",
-    list(places.keys())
+    list(places.keys()),
+    key=f"place_{country}_{city}"
 )
 
 lat, lon = places[place_name]
 
 st.divider()
+
 st.header(f"📍 {place_name}")
 
 st.write(f"**국가:** {country}")
 st.write(f"**도시:** {city}")
 
-# 관광지 사진 표시
-st.subheader("📸 관광지 사진")
+# 위키백과 정보 가져오기
+with st.spinner("관광지 정보를 불러오는 중입니다..."):
+    image_url, description, page_url = get_wikipedia_data(
+        place_name
+    )
 
-with st.spinner("관광지 사진을 확인하고 있습니다..."):
-    image_url = get_wikipedia_image(place_name)
     image_data = download_image(image_url)
+
+# 관광지 사진
+st.subheader("📸 관광지 사진")
 
 if image_data:
     st.image(
@@ -355,11 +389,27 @@ if image_data:
     st.caption("사진 출처: 위키백과 / Wikimedia Commons")
 else:
     st.info(
-        "현재 이 관광지의 사진을 불러올 수 없습니다. "
-        "관광지 위치와 지도는 정상적으로 이용할 수 있습니다."
+        "현재 이 관광지의 사진을 불러올 수 없습니다."
     )
 
-# 지도 표시
+# 한국어 관광지 설명
+st.subheader("📖 관광지 소개")
+
+if description:
+    st.write(description)
+
+    if page_url:
+        st.link_button(
+            "📚 위키백과에서 자세히 보기",
+            page_url
+        )
+else:
+    st.info(
+        "현재 이 관광지의 한국어 소개를 "
+        "불러올 수 없습니다."
+    )
+
+# 지도
 st.subheader("🗺️ 관광지 위치")
 
 st.map(
@@ -367,4 +417,7 @@ st.map(
     zoom=13
 )
 
-st.success("관광지 검색 및 지도 기능이 정상적으로 실행되었습니다.")
+st.caption(
+    "관광지 위치는 등록된 좌표를 기준으로 표시됩니다. "
+    "소개와 사진은 한국어 위키백과 자료를 활용합니다."
+)
