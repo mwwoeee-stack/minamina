@@ -1,7 +1,10 @@
 
 import streamlit as st
 import requests
+
 from urllib.parse import urlparse, unquote
+from io import BytesIO
+from PIL import Image
 
 # ==========================================
 # 1. 기본 설정
@@ -14,8 +17,10 @@ st.set_page_config(
 )
 
 st.title("🌏 세계 관광 명소 탐색 시스템")
+
 st.caption(
-    "한국어 소개와 사진이 모두 제공되는 관광지만 추천합니다."
+    "OpenTripMap · Wikipedia · Wikimedia Commons 기반 "
+    "한국어 관광 정보 서비스"
 )
 
 # ==========================================
@@ -58,30 +63,38 @@ CITIES = {
 # ==========================================
 
 try:
-    API_KEY = st.secrets.get("OPENTRIPMAP_API_KEY", "")
+    API_KEY = st.secrets.get(
+        "OPENTRIPMAP_API_KEY", ""
+    )
 except Exception:
     API_KEY = ""
 
 if not API_KEY:
-    st.error("OpenTripMap API 키를 설정해 주세요.")
+    st.error(
+        "OpenTripMap API 키를 설정해 주세요."
+    )
     st.stop()
 
 BASE = "https://api.opentripmap.com/0.1/en/places"
-COMMONS_API = "https://commons.wikimedia.org/w/api.php"
+
+COMMONS_API = (
+    "https://commons.wikimedia.org/w/api.php"
+)
 
 HEADERS = {
     "User-Agent": (
         "WorldTourismExplorer/1.0 "
-        "(educational tourism information application)"
+        "(educational tourism application)"
     )
 }
 
 # ==========================================
-# 4. OpenTripMap API
+# 4. OpenTripMap 관광지 검색
 # ==========================================
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_places(lat, lon, radius, api_key):
+
     response = requests.get(
         f"{BASE}/radius",
         params={
@@ -95,35 +108,46 @@ def get_places(lat, lon, radius, api_key):
         },
         timeout=20
     )
+
     response.raise_for_status()
 
+    data = response.json()
+
     return [
-        p for p in response.json()
-        if p.get("name", "").strip()
-        and p.get("xid")
+        place
+        for place in data
+        if place.get("name", "").strip()
+        and place.get("xid")
     ]
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_detail(xid, api_key):
+
     response = requests.get(
         f"{BASE}/xid/{xid}",
-        params={"apikey": api_key},
+        params={
+            "apikey": api_key
+        },
         timeout=20
     )
+
     response.raise_for_status()
+
     return response.json()
 
 # ==========================================
-# 5. Wikipedia 한국어 설명 및 사진
+# 5. 한국어 Wikipedia 설명 및 사진
 # ==========================================
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_wikipedia_data(wikipedia_url):
+
     if not wikipedia_url:
         return None, None, None
 
     parsed = urlparse(wikipedia_url)
+
     hostname = parsed.hostname or ""
 
     if not hostname.endswith(".wikipedia.org"):
@@ -132,12 +156,18 @@ def get_wikipedia_data(wikipedia_url):
     if "/wiki/" not in parsed.path:
         return None, None, None
 
-    title = unquote(parsed.path.split("/wiki/", 1)[1])
+    title = unquote(
+        parsed.path.split("/wiki/", 1)[1]
+    )
 
     try:
+
         if hostname == "ko.wikipedia.org":
+
             korean_title = title.replace("_", " ")
+
         else:
+
             response = requests.get(
                 f"https://{hostname}/w/api.php",
                 params={
@@ -145,11 +175,13 @@ def get_wikipedia_data(wikipedia_url):
                     "format": "json",
                     "prop": "langlinks",
                     "titles": title,
-                    "lllang": "ko"
+                    "lllang": "ko",
+                    "lllimit": 1
                 },
                 headers=HEADERS,
                 timeout=12
             )
+
             response.raise_for_status()
 
             pages = response.json().get(
@@ -159,12 +191,18 @@ def get_wikipedia_data(wikipedia_url):
             korean_title = None
 
             for page in pages.values():
-                links = page.get("langlinks", [])
+
+                links = page.get(
+                    "langlinks", []
+                )
+
                 if links:
+
                     korean_title = (
                         links[0].get("*")
                         or links[0].get("title")
                     )
+
                     break
 
         if not korean_title:
@@ -184,6 +222,7 @@ def get_wikipedia_data(wikipedia_url):
             headers=HEADERS,
             timeout=12
         )
+
         response.raise_for_status()
 
         pages = response.json().get(
@@ -191,18 +230,24 @@ def get_wikipedia_data(wikipedia_url):
         ).get("pages", {})
 
         for page in pages.values():
+
             description = page.get(
                 "extract", ""
             ).strip()
 
-            image = page.get(
+            image_url = page.get(
                 "thumbnail", {}
             ).get("source")
 
-            korean_name = page.get("title")
+            name = page.get("title")
 
             if description:
-                return description, image, korean_name
+
+                return (
+                    description,
+                    image_url,
+                    name
+                )
 
     except (requests.RequestException, ValueError):
         pass
@@ -214,108 +259,207 @@ def get_wikipedia_data(wikipedia_url):
 # ==========================================
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def get_commons_image(place_name):
-    if not place_name:
-        return None
+def get_commons_images(place_name, city_name):
 
-    ignored = {
-        "the", "and", "of", "de", "del",
-        "la", "le", "el", "in", "at"
+    if not place_name:
+        return []
+
+    ignored_words = {
+        "the", "and", "of", "in", "at",
+        "de", "del", "la", "le", "el",
+        "a", "an"
     }
 
     words = [
-        w.lower()
-        for w in place_name.replace("-", " ").split()
-        if len(w) >= 4 and w.lower() not in ignored
+        word.lower()
+        for word in place_name.replace("-", " ").split()
+        if len(word) >= 4
+        and word.lower() not in ignored_words
     ]
 
     if not words:
+        return []
+
+    queries = [
+        f'"{place_name}" "{city_name}"',
+        f'"{place_name}"'
+    ]
+
+    candidates = []
+    seen_urls = set()
+
+    for query in queries:
+
+        try:
+
+            response = requests.get(
+                COMMONS_API,
+                params={
+                    "action": "query",
+                    "format": "json",
+                    "generator": "search",
+                    "gsrsearch": (
+                        f"filetype:bitmap {query}"
+                    ),
+                    "gsrnamespace": 6,
+                    "gsrlimit": 15,
+                    "prop": "imageinfo",
+                    "iiprop": "url|mime",
+                    "iiurlwidth": 1000
+                },
+                headers=HEADERS,
+                timeout=15
+            )
+
+            response.raise_for_status()
+
+            pages = response.json().get(
+                "query", {}
+            ).get("pages", {})
+
+            for page in pages.values():
+
+                title = page.get(
+                    "title", ""
+                ).lower()
+
+                if not title.endswith(
+                    (
+                        ".jpg",
+                        ".jpeg",
+                        ".png",
+                        ".webp"
+                    )
+                ):
+                    continue
+
+                info = (
+                    page.get("imageinfo") or [{}]
+                )[0]
+
+                if not info.get(
+                    "mime", ""
+                ).startswith("image/"):
+                    continue
+
+                match_count = sum(
+                    word in title
+                    for word in words
+                )
+
+                score = (
+                    match_count / len(words)
+                )
+
+                if score < 0.6:
+                    continue
+
+                image_url = (
+                    info.get("thumburl")
+                    or info.get("url")
+                )
+
+                if image_url and image_url not in seen_urls:
+
+                    seen_urls.add(image_url)
+
+                    candidates.append({
+                        "score": score,
+                        "url": image_url
+                    })
+
+        except (requests.RequestException, ValueError):
+            continue
+
+    candidates.sort(
+        key=lambda item: item["score"],
+        reverse=True
+    )
+
+    return [
+        item["url"]
+        for item in candidates
+    ]
+
+# ==========================================
+# 7. 실제 이미지 파일 검증
+# ==========================================
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def download_valid_image(image_url):
+    """
+    이미지 주소가 아니라 실제 파일을 다운로드하여
+    정상적인 이미지인지 검사합니다.
+    """
+
+    if not image_url:
         return None
 
     try:
+
         response = requests.get(
-            COMMONS_API,
-            params={
-                "action": "query",
-                "format": "json",
-                "generator": "search",
-                "gsrsearch": f'filetype:bitmap "{place_name}"',
-                "gsrnamespace": 6,
-                "gsrlimit": 10,
-                "prop": "imageinfo",
-                "iiprop": "url|mime",
-                "iiurlwidth": 1000
-            },
+            image_url,
             headers=HEADERS,
-            timeout=15
+            timeout=12
         )
+
         response.raise_for_status()
 
-        pages = response.json().get(
-            "query", {}
-        ).get("pages", {})
+        content_type = response.headers.get(
+            "Content-Type", ""
+        ).lower()
 
-        candidates = []
+        if not content_type.startswith("image/"):
+            return None
 
-        for page in pages.values():
-            title = page.get("title", "").lower()
+        image_bytes = response.content
 
-            if not title.endswith(
-                (".jpg", ".jpeg", ".png", ".webp")
-            ):
-                continue
+        if not image_bytes:
+            return None
 
-            info = (
-                page.get("imageinfo") or [{}]
-            )[0]
+        # Pillow로 실제 이미지 파일 검사
+        with Image.open(BytesIO(image_bytes)) as img:
 
-            if not info.get(
-                "mime", ""
-            ).startswith("image/"):
-                continue
+            img.verify()
 
-            matches = sum(
-                word in title for word in words
-            )
+        # 검증 후 실제로 읽을 수 있는지도 확인
+        with Image.open(BytesIO(image_bytes)) as img:
 
-            score = matches / len(words)
+            img.load()
 
-            if score < 0.6:
-                continue
+        return image_bytes
 
-            url = (
-                info.get("thumburl")
-                or info.get("url")
-            )
-
-            if url:
-                candidates.append((score, url))
-
-        if candidates:
-            candidates.sort(reverse=True)
-            return candidates[0][1]
-
-    except (requests.RequestException, ValueError):
-        pass
-
-    return None
+    except Exception:
+        return None
 
 # ==========================================
-# 7. 관광지 검증
+# 8. 관광지 검증
 # ==========================================
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def verify_place(xid, original_name, api_key):
-    """
-    한국어 설명과 사진이 모두 있는지 확인합니다.
-    두 조건을 만족하지 않으면 제외합니다.
-    """
+def verify_place(
+    xid,
+    original_name,
+    city_name,
+    api_key
+):
 
     try:
-        detail = get_detail(xid, api_key)
-    except (requests.RequestException, ValueError, TypeError):
+
+        detail = get_detail(
+            xid,
+            api_key
+        )
+
+    except (
+        requests.RequestException,
+        ValueError,
+        TypeError
+    ):
+
         return None
 
+    # 한국어 설명 검색
     description, wiki_image, korean_name = (
         get_wikipedia_data(
             detail.get("wikipedia")
@@ -326,26 +470,55 @@ def verify_place(xid, original_name, api_key):
     if not description:
         return None
 
-    # 사진 검색
-    image = (
-        (detail.get("preview") or {}).get("source")
-        or wiki_image
-    )
+    preview_image = (
+        detail.get("preview") or {}
+    ).get("source")
 
-    image_source = (
-        "OpenTripMap"
-        if (detail.get("preview") or {}).get("source")
-        else "Wikipedia"
-    )
+    image_candidates = [
+        ("OpenTripMap", preview_image),
+        ("Wikipedia", wiki_image)
+    ]
 
-    if not image:
-        image = get_commons_image(
-            detail.get("name") or original_name
+    valid_image = None
+    image_source = None
+
+    # OpenTripMap 및 Wikipedia 사진 확인
+    for source, image_url in image_candidates:
+
+        image_bytes = download_valid_image(
+            image_url
         )
-        image_source = "Wikimedia Commons"
 
-    # 사진이 없으면 제외
-    if not image:
+        if image_bytes:
+
+            valid_image = image_bytes
+            image_source = source
+
+            break
+
+    # 앞의 사진이 실패하면 Commons에서 검색
+    if valid_image is None:
+
+        commons_images = get_commons_images(
+            detail.get("name") or original_name,
+            city_name
+        )
+
+        for image_url in commons_images:
+
+            image_bytes = download_valid_image(
+                image_url
+            )
+
+            if image_bytes:
+
+                valid_image = image_bytes
+                image_source = "Wikimedia Commons"
+
+                break
+
+    # 정상적인 사진이 없으면 관광지 제외
+    if valid_image is None:
         return None
 
     return {
@@ -353,13 +526,13 @@ def verify_place(xid, original_name, api_key):
         "name": korean_name or original_name,
         "original_name": original_name,
         "description": description,
-        "image": image,
+        "image": valid_image,
         "image_source": image_source,
         "detail": detail
     }
 
 # ==========================================
-# 8. 국가 및 도시 선택
+# 9. 국가 및 도시 선택
 # ==========================================
 
 st.subheader("🔎 국가와 도시 선택")
@@ -367,45 +540,69 @@ st.subheader("🔎 국가와 도시 선택")
 col1, col2, col3 = st.columns(3)
 
 with col1:
+
     country = st.selectbox(
         "국가",
-        list(CITIES)
+        list(CITIES.keys())
     )
 
 with col2:
+
     city = st.selectbox(
         "도시",
-        list(CITIES[country])
+        list(CITIES[country].keys())
     )
 
 with col3:
+
     radius_km = st.slider(
         "검색 반경 (km)",
-        3, 30, 10
+        min_value=3,
+        max_value=30,
+        value=10
     )
 
 lat, lon = CITIES[country][city]
 
 st.map(
-    [{"lat": lat, "lon": lon}],
+    [{
+        "lat": lat,
+        "lon": lon
+    }],
     zoom=10
 )
 
 # ==========================================
-# 9. 관광지 검색 및 자동 필터링
+# 10. 관광지 검색
 # ==========================================
 
-st.subheader(f"📍 {city} 관광 명소")
+st.subheader(
+    f"📍 {city} 관광 명소"
+)
 
 try:
-    with st.spinner("관광지 목록을 불러오는 중..."):
+
+    with st.spinner(
+        "관광지 데이터를 불러오는 중..."
+    ):
+
         places = get_places(
-            lat, lon,
+            lat,
+            lon,
             radius_km * 1000,
             API_KEY
         )
-except (requests.RequestException, ValueError, TypeError) as e:
-    st.error(f"관광지 검색 오류: {e}")
+
+except (
+    requests.RequestException,
+    ValueError,
+    TypeError
+) as e:
+
+    st.error(
+        f"관광지 검색 오류: {e}"
+    )
+
     st.stop()
 
 keyword = st.text_input(
@@ -414,10 +611,14 @@ keyword = st.text_input(
 )
 
 if keyword:
+
     places = [
-        p for p in places
+        place
+        for place in places
         if keyword.casefold()
-        in p.get("name", "").casefold()
+        in place.get(
+            "name", ""
+        ).casefold()
     ]
 
 # 최대 30개 검사
@@ -425,40 +626,50 @@ candidates = places[:30]
 
 verified_places = []
 
-progress = st.progress(0)
+if candidates:
 
-with st.spinner(
-    "한국어 소개와 사진이 있는 관광지를 확인하는 중..."
-):
-    for index, place in enumerate(candidates):
-        result = verify_place(
-            place["xid"],
-            place["name"],
-            API_KEY
-        )
+    progress = st.progress(0)
 
-        if result:
-            verified_places.append(result)
+    with st.spinner(
+        "한국어 소개와 정상적인 사진을 확인하는 중..."
+    ):
 
-        progress.progress(
-            (index + 1) / len(candidates)
-        )
+        for index, place in enumerate(candidates):
 
-        if len(verified_places) >= 10:
-            break
+            result = verify_place(
+                place["xid"],
+                place["name"],
+                city,
+                API_KEY
+            )
 
-progress.empty()
+            if result:
+                verified_places.append(
+                    result
+                )
+
+            progress.progress(
+                (index + 1) / len(candidates)
+            )
+
+            if len(verified_places) >= 10:
+                break
+
+    progress.empty()
 
 # ==========================================
-# 10. 검증된 관광지 목록
+# 11. 조건을 충족하는 관광지만 표시
 # ==========================================
 
 if not verified_places:
+
     st.warning(
-        "현재 검색 범위에서 한국어 소개와 사진이 "
-        "모두 있는 관광지를 찾지 못했습니다. "
+        "현재 검색 범위에서 한국어 소개와 "
+        "정상적인 사진이 모두 있는 관광지를 "
+        "찾지 못했습니다. "
         "검색 반경을 넓히거나 다른 도시를 선택해 주세요."
     )
+
     st.stop()
 
 st.success(
@@ -469,24 +680,38 @@ st.success(
 selected_index = st.selectbox(
     "관광지 선택",
     range(len(verified_places)),
-    format_func=lambda i: verified_places[i]["name"]
+    format_func=lambda i: (
+        verified_places[i]["name"]
+    )
 )
 
-selected_place = verified_places[selected_index]
+selected_place = verified_places[
+    selected_index
+]
 
 # ==========================================
-# 11. 관광지 상세 정보
+# 12. 관광지 상세 정보
 # ==========================================
 
 st.divider()
 
-st.header(selected_place["name"])
+st.header(
+    selected_place["name"]
+)
 
 left, right = st.columns(2)
 
-with left:
-    st.markdown("#### 📸 관광지 사진")
+# ==========================================
+# 13. 관광지 사진 표시
+# ==========================================
 
+with left:
+
+    st.markdown(
+        "#### 📸 관광지 사진"
+    )
+
+    # 검증된 이미지 파일을 직접 표시
     st.image(
         selected_place["image"],
         caption=(
@@ -496,8 +721,15 @@ with left:
         use_container_width=True
     )
 
+# ==========================================
+# 14. 한국어 관광지 소개
+# ==========================================
+
 with right:
-    st.markdown("#### 🇰🇷 관광지 소개")
+
+    st.markdown(
+        "#### 🇰🇷 관광지 소개"
+    )
 
     st.write(
         selected_place["description"]
@@ -505,7 +737,9 @@ with right:
 
     detail = selected_place["detail"]
 
-    address = detail.get("address") or {}
+    address = (
+        detail.get("address") or {}
+    )
 
     address_text = ", ".join(
         str(value)
@@ -519,19 +753,21 @@ with right:
     )
 
     if detail.get("wikipedia"):
+
         st.link_button(
             "Wikipedia 원문 보기",
             detail["wikipedia"]
         )
 
     if detail.get("otm"):
+
         st.link_button(
             "OpenTripMap 원문 보기",
             detail["otm"]
         )
 
 # ==========================================
-# 12. 관광지 위치
+# 15. 관광지 위치 지도
 # ==========================================
 
 coords = (
@@ -540,7 +776,10 @@ coords = (
 )
 
 if "lat" in coords and "lon" in coords:
-    st.markdown("#### 🗺️ 관광지 위치")
+
+    st.markdown(
+        "#### 🗺️ 관광지 위치"
+    )
 
     st.map(
         [{
@@ -551,7 +790,7 @@ if "lat" in coords and "lon" in coords:
     )
 
 # ==========================================
-# 13. 출처
+# 16. 데이터 출처
 # ==========================================
 
 st.divider()
