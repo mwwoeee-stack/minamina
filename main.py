@@ -1,14 +1,4 @@
-
 import streamlit as st
-import requests
-
-from urllib.parse import urlparse, unquote
-from io import BytesIO
-from PIL import Image
-
-# ==========================================
-# 1. 기본 설정
-# ==========================================
 
 st.set_page_config(
     page_title="세계 관광 명소 탐색",
@@ -17,785 +7,168 @@ st.set_page_config(
 )
 
 st.title("🌏 세계 관광 명소 탐색 시스템")
+st.write("국가와 도시를 선택하여 주요 관광지를 탐색해 보세요.")
 
-st.caption(
-    "OpenTripMap · Wikipedia · Wikimedia Commons 기반 "
-    "한국어 관광 정보 서비스"
-)
+# 국가별 도시 및 관광지 데이터
+# 형식: "관광지 이름": (위도, 경도)
 
-# ==========================================
-# 2. 국가 및 도시
-# ==========================================
-
-CITIES = {
+TOURIST_DATA = {
     "대한민국": {
-        "서울": (37.5665, 126.9780),
-        "부산": (35.1796, 129.0756)
+        "서울": {
+            "경복궁": (37.5796, 126.9770),
+            "남산서울타워": (37.5512, 126.9882),
+            "롯데월드타워": (37.5125, 127.1025),
+            "창덕궁": (37.5794, 126.9910),
+            "광화문광장": (37.5729, 126.9769)
+        },
+        "부산": {
+            "해운대해수욕장": (35.1587, 129.1604),
+            "광안대교": (35.1477, 129.1288),
+            "감천문화마을": (35.0975, 129.0106),
+            "해동용궁사": (35.1884, 129.2232),
+            "광안리해수욕장": (35.1532, 129.1186)
+        }
     },
     "일본": {
-        "도쿄": (35.6762, 139.6503),
-        "교토": (35.0116, 135.7681)
+        "도쿄": {
+            "도쿄 타워": (35.6586, 139.7454),
+            "도쿄 스카이트리": (35.7101, 139.8107),
+            "센소지": (35.7148, 139.7967),
+            "메이지 신궁": (35.6764, 139.6993),
+            "시부야 스크램블 교차로": (35.6595, 139.7005)
+        },
+        "교토": {
+            "기요미즈데라": (34.9949, 135.7850),
+            "후시미 이나리 신사": (34.9671, 135.7727),
+            "금각사": (35.0394, 135.7292),
+            "아라시야마 대나무숲": (35.0170, 135.6713),
+            "니조성": (35.0142, 135.7481)
+        }
     },
     "중국": {
-        "베이징": (39.9042, 116.4074),
-        "상하이": (31.2304, 121.4737)
+        "베이징": {
+            "자금성": (39.9163, 116.3972),
+            "천안문광장": (39.9055, 116.3976),
+            "천단공원": (39.8822, 116.4065),
+            "이화원": (39.9996, 116.2755),
+            "팔달령 만리장성": (40.3598, 116.0200)
+        },
+        "상하이": {
+            "동방명주탑": (31.2397, 121.4998),
+            "와이탄": (31.2400, 121.4900),
+            "예원": (31.2272, 121.4921),
+            "상하이 타워": (31.2335, 121.5055),
+            "난징루": (31.2348, 121.4745)
+        }
     },
     "미국": {
-        "뉴욕": (40.7128, -74.0060),
-        "샌프란시스코": (37.7749, -122.4194)
+        "뉴욕": {
+            "자유의 여신상": (40.6892, -74.0445),
+            "타임스 스퀘어": (40.7580, -73.9855),
+            "센트럴 파크": (40.7829, -73.9654),
+            "엠파이어 스테이트 빌딩": (40.7484, -73.9857),
+            "브루클린 브리지": (40.7061, -73.9969)
+        },
+        "샌프란시스코": {
+            "금문교": (37.8199, -122.4783),
+            "알카트라즈섬": (37.8267, -122.4230),
+            "피어 39": (37.8087, -122.4098),
+            "롬바드 스트리트": (37.8021, -122.4187),
+            "팰리스 오브 파인 아츠": (37.8029, -122.4484)
+        }
     },
     "프랑스": {
-        "파리": (48.8566, 2.3522),
-        "니스": (43.7102, 7.2620)
+        "파리": {
+            "에펠탑": (48.8584, 2.2945),
+            "루브르 박물관": (48.8606, 2.3376),
+            "개선문": (48.8738, 2.2950),
+            "노트르담 대성당": (48.8530, 2.3499),
+            "사크레쾨르 대성당": (48.8867, 2.3431)
+        },
+        "니스": {
+            "영국인 산책로": (43.6954, 7.2653),
+            "니스 구시가지": (43.6975, 7.2755),
+            "캐슬 힐": (43.6956, 7.2808),
+            "마세나 광장": (43.6972, 7.2701),
+            "니스 항구": (43.6959, 7.2865)
+        }
     },
     "아르헨티나": {
-        "부에노스아이레스": (-34.6037, -58.3816),
-        "멘도사": (-32.8895, -68.8458)
+        "부에노스아이레스": {
+            "오벨리스코": (-34.6037, -58.3816),
+            "카사 로사다": (-34.6081, -58.3702),
+            "라 보카 카미니토": (-34.6383, -58.3625),
+            "레콜레타 묘지": (-34.5875, -58.3930),
+            "콜론 극장": (-34.6010, -58.3832)
+        },
+        "멘도사": {
+            "독립광장": (-32.8895, -68.8458),
+            "산마르틴 공원": (-32.8898, -68.8700),
+            "세로 데 라 글로리아": (-32.8904, -68.8910),
+            "에스파냐 광장": (-32.8934, -68.8438),
+            "멘도사 중앙시장": (-32.8857, -68.8396)
+        }
     },
     "호주": {
-        "시드니": (-33.8688, 151.2093),
-        "멜버른": (-37.8136, 144.9631)
+        "시드니": {
+            "시드니 오페라 하우스": (-33.8568, 151.2153),
+            "하버 브리지": (-33.8523, 151.2108),
+            "본다이 비치": (-33.8915, 151.2767),
+            "달링 하버": (-33.8749, 151.2009),
+            "타롱가 동물원": (-33.8433, 151.2410)
+        },
+        "멜버른": {
+            "플린더스 스트리트역": (-37.8183, 144.9671),
+            "페더레이션 광장": (-37.8179, 144.9690),
+            "퀸 빅토리아 마켓": (-37.8076, 144.9568),
+            "왕립 식물원": (-37.8304, 144.9803),
+            "브라이턴 비치": (-37.9167, 144.9860)
+        }
     }
 }
 
-# ==========================================
-# 3. API 설정
-# ==========================================
+# 국가 선택
+st.subheader("🔎 관광지 검색")
 
-try:
-    API_KEY = st.secrets.get(
-        "OPENTRIPMAP_API_KEY", ""
-    )
-except Exception:
-    API_KEY = ""
-
-if not API_KEY:
-    st.error(
-        "OpenTripMap API 키를 설정해 주세요."
-    )
-    st.stop()
-
-BASE = "https://api.opentripmap.com/0.1/en/places"
-
-COMMONS_API = (
-    "https://commons.wikimedia.org/w/api.php"
-)
-
-HEADERS = {
-    "User-Agent": (
-        "WorldTourismExplorer/1.0 "
-        "(educational tourism application)"
-    )
-}
-
-# ==========================================
-# 4. OpenTripMap 관광지 검색
-# ==========================================
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_places(lat, lon, radius, api_key):
-
-    response = requests.get(
-        f"{BASE}/radius",
-        params={
-            "radius": radius,
-            "lon": lon,
-            "lat": lat,
-            "rate": 3,
-            "limit": 100,
-            "format": "json",
-            "apikey": api_key
-        },
-        timeout=20
-    )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    return [
-        place
-        for place in data
-        if place.get("name", "").strip()
-        and place.get("xid")
-    ]
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_detail(xid, api_key):
-
-    response = requests.get(
-        f"{BASE}/xid/{xid}",
-        params={
-            "apikey": api_key
-        },
-        timeout=20
-    )
-
-    response.raise_for_status()
-
-    return response.json()
-
-# ==========================================
-# 5. 한국어 Wikipedia 설명 및 사진
-# ==========================================
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_wikipedia_data(wikipedia_url):
-
-    if not wikipedia_url:
-        return None, None, None
-
-    parsed = urlparse(wikipedia_url)
-
-    hostname = parsed.hostname or ""
-
-    if not hostname.endswith(".wikipedia.org"):
-        return None, None, None
-
-    if "/wiki/" not in parsed.path:
-        return None, None, None
-
-    title = unquote(
-        parsed.path.split("/wiki/", 1)[1]
-    )
-
-    try:
-
-        if hostname == "ko.wikipedia.org":
-
-            korean_title = title.replace("_", " ")
-
-        else:
-
-            response = requests.get(
-                f"https://{hostname}/w/api.php",
-                params={
-                    "action": "query",
-                    "format": "json",
-                    "prop": "langlinks",
-                    "titles": title,
-                    "lllang": "ko",
-                    "lllimit": 1
-                },
-                headers=HEADERS,
-                timeout=12
-            )
-
-            response.raise_for_status()
-
-            pages = response.json().get(
-                "query", {}
-            ).get("pages", {})
-
-            korean_title = None
-
-            for page in pages.values():
-
-                links = page.get(
-                    "langlinks", []
-                )
-
-                if links:
-
-                    korean_title = (
-                        links[0].get("*")
-                        or links[0].get("title")
-                    )
-
-                    break
-
-        if not korean_title:
-            return None, None, None
-
-        response = requests.get(
-            "https://ko.wikipedia.org/w/api.php",
-            params={
-                "action": "query",
-                "format": "json",
-                "prop": "extracts|pageimages",
-                "exintro": 1,
-                "explaintext": 1,
-                "pithumbsize": 1000,
-                "titles": korean_title
-            },
-            headers=HEADERS,
-            timeout=12
-        )
-
-        response.raise_for_status()
-
-        pages = response.json().get(
-            "query", {}
-        ).get("pages", {})
-
-        for page in pages.values():
-
-            description = page.get(
-                "extract", ""
-            ).strip()
-
-            image_url = page.get(
-                "thumbnail", {}
-            ).get("source")
-
-            name = page.get("title")
-
-            if description:
-
-                return (
-                    description,
-                    image_url,
-                    name
-                )
-
-    except (requests.RequestException, ValueError):
-        pass
-
-    return None, None, None
-
-# ==========================================
-# 6. Wikimedia Commons 사진 검색
-# ==========================================
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_commons_images(place_name, city_name):
-
-    if not place_name:
-        return []
-
-    ignored_words = {
-        "the", "and", "of", "in", "at",
-        "de", "del", "la", "le", "el",
-        "a", "an"
-    }
-
-    words = [
-        word.lower()
-        for word in place_name.replace("-", " ").split()
-        if len(word) >= 4
-        and word.lower() not in ignored_words
-    ]
-
-    if not words:
-        return []
-
-    queries = [
-        f'"{place_name}" "{city_name}"',
-        f'"{place_name}"'
-    ]
-
-    candidates = []
-    seen_urls = set()
-
-    for query in queries:
-
-        try:
-
-            response = requests.get(
-                COMMONS_API,
-                params={
-                    "action": "query",
-                    "format": "json",
-                    "generator": "search",
-                    "gsrsearch": (
-                        f"filetype:bitmap {query}"
-                    ),
-                    "gsrnamespace": 6,
-                    "gsrlimit": 15,
-                    "prop": "imageinfo",
-                    "iiprop": "url|mime",
-                    "iiurlwidth": 1000
-                },
-                headers=HEADERS,
-                timeout=15
-            )
-
-            response.raise_for_status()
-
-            pages = response.json().get(
-                "query", {}
-            ).get("pages", {})
-
-            for page in pages.values():
-
-                title = page.get(
-                    "title", ""
-                ).lower()
-
-                if not title.endswith(
-                    (
-                        ".jpg",
-                        ".jpeg",
-                        ".png",
-                        ".webp"
-                    )
-                ):
-                    continue
-
-                info = (
-                    page.get("imageinfo") or [{}]
-                )[0]
-
-                if not info.get(
-                    "mime", ""
-                ).startswith("image/"):
-                    continue
-
-                match_count = sum(
-                    word in title
-                    for word in words
-                )
-
-                score = (
-                    match_count / len(words)
-                )
-
-                if score < 0.6:
-                    continue
-
-                image_url = (
-                    info.get("thumburl")
-                    or info.get("url")
-                )
-
-                if image_url and image_url not in seen_urls:
-
-                    seen_urls.add(image_url)
-
-                    candidates.append({
-                        "score": score,
-                        "url": image_url
-                    })
-
-        except (requests.RequestException, ValueError):
-            continue
-
-    candidates.sort(
-        key=lambda item: item["score"],
-        reverse=True
-    )
-
-    return [
-        item["url"]
-        for item in candidates
-    ]
-
-# ==========================================
-# 7. 실제 이미지 파일 검증
-# ==========================================
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def download_valid_image(image_url):
-    """
-    이미지 주소가 아니라 실제 파일을 다운로드하여
-    정상적인 이미지인지 검사합니다.
-    """
-
-    if not image_url:
-        return None
-
-    try:
-
-        response = requests.get(
-            image_url,
-            headers=HEADERS,
-            timeout=12
-        )
-
-        response.raise_for_status()
-
-        content_type = response.headers.get(
-            "Content-Type", ""
-        ).lower()
-
-        if not content_type.startswith("image/"):
-            return None
-
-        image_bytes = response.content
-
-        if not image_bytes:
-            return None
-
-        # Pillow로 실제 이미지 파일 검사
-        with Image.open(BytesIO(image_bytes)) as img:
-
-            img.verify()
-
-        # 검증 후 실제로 읽을 수 있는지도 확인
-        with Image.open(BytesIO(image_bytes)) as img:
-
-            img.load()
-
-        return image_bytes
-
-    except Exception:
-        return None
-
-# ==========================================
-# 8. 관광지 검증
-# ==========================================
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def verify_place(
-    xid,
-    original_name,
-    city_name,
-    api_key
-):
-
-    try:
-
-        detail = get_detail(
-            xid,
-            api_key
-        )
-
-    except (
-        requests.RequestException,
-        ValueError,
-        TypeError
-    ):
-
-        return None
-
-    # 한국어 설명 검색
-    description, wiki_image, korean_name = (
-        get_wikipedia_data(
-            detail.get("wikipedia")
-        )
-    )
-
-    # 한국어 설명이 없으면 제외
-    if not description:
-        return None
-
-    preview_image = (
-        detail.get("preview") or {}
-    ).get("source")
-
-    image_candidates = [
-        ("OpenTripMap", preview_image),
-        ("Wikipedia", wiki_image)
-    ]
-
-    valid_image = None
-    image_source = None
-
-    # OpenTripMap 및 Wikipedia 사진 확인
-    for source, image_url in image_candidates:
-
-        image_bytes = download_valid_image(
-            image_url
-        )
-
-        if image_bytes:
-
-            valid_image = image_bytes
-            image_source = source
-
-            break
-
-    # 앞의 사진이 실패하면 Commons에서 검색
-    if valid_image is None:
-
-        commons_images = get_commons_images(
-            detail.get("name") or original_name,
-            city_name
-        )
-
-        for image_url in commons_images:
-
-            image_bytes = download_valid_image(
-                image_url
-            )
-
-            if image_bytes:
-
-                valid_image = image_bytes
-                image_source = "Wikimedia Commons"
-
-                break
-
-    # 정상적인 사진이 없으면 관광지 제외
-    if valid_image is None:
-        return None
-
-    return {
-        "xid": xid,
-        "name": korean_name or original_name,
-        "original_name": original_name,
-        "description": description,
-        "image": valid_image,
-        "image_source": image_source,
-        "detail": detail
-    }
-
-# ==========================================
-# 9. 국가 및 도시 선택
-# ==========================================
-
-st.subheader("🔎 국가와 도시 선택")
-
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
-
     country = st.selectbox(
-        "국가",
-        list(CITIES.keys())
+        "국가 선택",
+        list(TOURIST_DATA.keys())
     )
 
 with col2:
-
     city = st.selectbox(
-        "도시",
-        list(CITIES[country].keys())
+        "도시 선택",
+        list(TOURIST_DATA[country].keys())
     )
 
-with col3:
+# 도시별 관광지 목록
+places = TOURIST_DATA[country][city]
 
-    radius_km = st.slider(
-        "검색 반경 (km)",
-        min_value=3,
-        max_value=30,
-        value=10
-    )
+st.subheader(f"📍 {city}의 주요 관광지")
 
-lat, lon = CITIES[country][city]
+place_name = st.selectbox(
+    "관광지 선택",
+    list(places.keys())
+)
+
+lat, lon = places[place_name]
+
+# 선택한 관광지 정보
+st.divider()
+
+st.header(f"📍 {place_name}")
+
+st.write(f"**국가:** {country}")
+st.write(f"**도시:** {city}")
+
+st.subheader("🗺️ 관광지 위치")
 
 st.map(
-    [{
-        "lat": lat,
-        "lon": lon
-    }],
-    zoom=10
+    [{"lat": lat, "lon": lon}],
+    zoom=13
 )
 
-# ==========================================
-# 10. 관광지 검색
-# ==========================================
-
-st.subheader(
-    f"📍 {city} 관광 명소"
-)
-
-try:
-
-    with st.spinner(
-        "관광지 데이터를 불러오는 중..."
-    ):
-
-        places = get_places(
-            lat,
-            lon,
-            radius_km * 1000,
-            API_KEY
-        )
-
-except (
-    requests.RequestException,
-    ValueError,
-    TypeError
-) as e:
-
-    st.error(
-        f"관광지 검색 오류: {e}"
-    )
-
-    st.stop()
-
-keyword = st.text_input(
-    "관광지 이름 검색",
-    placeholder="관광지 이름을 입력하세요"
-)
-
-if keyword:
-
-    places = [
-        place
-        for place in places
-        if keyword.casefold()
-        in place.get(
-            "name", ""
-        ).casefold()
-    ]
-
-# 최대 30개 검사
-candidates = places[:30]
-
-verified_places = []
-
-if candidates:
-
-    progress = st.progress(0)
-
-    with st.spinner(
-        "한국어 소개와 정상적인 사진을 확인하는 중..."
-    ):
-
-        for index, place in enumerate(candidates):
-
-            result = verify_place(
-                place["xid"],
-                place["name"],
-                city,
-                API_KEY
-            )
-
-            if result:
-                verified_places.append(
-                    result
-                )
-
-            progress.progress(
-                (index + 1) / len(candidates)
-            )
-
-            if len(verified_places) >= 10:
-                break
-
-    progress.empty()
-
-# ==========================================
-# 11. 조건을 충족하는 관광지만 표시
-# ==========================================
-
-if not verified_places:
-
-    st.warning(
-        "현재 검색 범위에서 한국어 소개와 "
-        "정상적인 사진이 모두 있는 관광지를 "
-        "찾지 못했습니다. "
-        "검색 반경을 넓히거나 다른 도시를 선택해 주세요."
-    )
-
-    st.stop()
-
-st.success(
-    f"한국어 설명과 사진이 있는 관광지 "
-    f"{len(verified_places)}곳을 찾았습니다!"
-)
-
-selected_index = st.selectbox(
-    "관광지 선택",
-    range(len(verified_places)),
-    format_func=lambda i: (
-        verified_places[i]["name"]
-    )
-)
-
-selected_place = verified_places[
-    selected_index
-]
-
-# ==========================================
-# 12. 관광지 상세 정보
-# ==========================================
-
-st.divider()
-
-st.header(
-    selected_place["name"]
-)
-
-left, right = st.columns(2)
-
-# ==========================================
-# 13. 관광지 사진 표시
-# ==========================================
-
-with left:
-
-    st.markdown(
-        "#### 📸 관광지 사진"
-    )
-
-    # 검증된 이미지 파일을 직접 표시
-    st.image(
-        selected_place["image"],
-        caption=(
-            f"사진 출처: "
-            f"{selected_place['image_source']}"
-        ),
-        use_container_width=True
-    )
-
-# ==========================================
-# 14. 한국어 관광지 소개
-# ==========================================
-
-with right:
-
-    st.markdown(
-        "#### 🇰🇷 관광지 소개"
-    )
-
-    st.write(
-        selected_place["description"]
-    )
-
-    detail = selected_place["detail"]
-
-    address = (
-        detail.get("address") or {}
-    )
-
-    address_text = ", ".join(
-        str(value)
-        for value in address.values()
-        if value
-    )
-
-    st.write(
-        "**주소:**",
-        address_text or "정보 없음"
-    )
-
-    if detail.get("wikipedia"):
-
-        st.link_button(
-            "Wikipedia 원문 보기",
-            detail["wikipedia"]
-        )
-
-    if detail.get("otm"):
-
-        st.link_button(
-            "OpenTripMap 원문 보기",
-            detail["otm"]
-        )
-
-# ==========================================
-# 15. 관광지 위치 지도
-# ==========================================
-
-coords = (
-    selected_place["detail"].get("point")
-    or {}
-)
-
-if "lat" in coords and "lon" in coords:
-
-    st.markdown(
-        "#### 🗺️ 관광지 위치"
-    )
-
-    st.map(
-        [{
-            "lat": coords["lat"],
-            "lon": coords["lon"]
-        }],
-        zoom=13
-    )
-
-# ==========================================
-# 16. 데이터 출처
-# ==========================================
-
-st.divider()
-
-st.caption(
-    "자료 출처: OpenTripMap API · "
-    "한국어 Wikipedia · Wikimedia Commons"
-)
+st.success("관광지 목록과 지도 표시가 완료되었습니다.")
