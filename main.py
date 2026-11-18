@@ -88,29 +88,6 @@ TOURIST_DATA = {
             "개선문": (48.8738, 2.2950),
             "노트르담 대성당": (48.8530, 2.3499),
             "사크레쾨르 대성당": (48.8867, 2.3431)
-        },
-        "니스": {
-            "영국인 산책로": (43.6954, 7.2653),
-            "니스 구시가지": (43.6975, 7.2755),
-            "캐슬 힐": (43.6956, 7.2808),
-            "마세나 광장": (43.6972, 7.2701),
-            "니스 항구": (43.6959, 7.2865)
-        }
-    },
-    "아르헨티나": {
-        "부에노스아이레스": {
-            "오벨리스코": (-34.6037, -58.3816),
-            "카사 로사다": (-34.6081, -58.3702),
-            "라 보카 카미니토": (-34.6383, -58.3625),
-            "레콜레타 묘지": (-34.5875, -58.3930),
-            "콜론 극장": (-34.6010, -58.3832)
-        },
-        "멘도사": {
-            "독립광장": (-32.8895, -68.8458),
-            "산마르틴 공원": (-32.8898, -68.8700),
-            "세로 데 라 글로리아": (-32.8904, -68.8910),
-            "에스파냐 광장": (-32.8934, -68.8438),
-            "멘도사 중앙시장": (-32.8857, -68.8396)
         }
     },
     "호주": {
@@ -178,21 +155,6 @@ WIKI_TITLES = {
     "개선문": "에투알 개선문",
     "노트르담 대성당": "파리 노트르담 대성당",
     "사크레쾨르 대성당": "사크레쾨르 대성당",
-    "영국인 산책로": "영국인 산책로",
-    "니스 구시가지": None,
-    "캐슬 힐": None,
-    "마세나 광장": "마세나 광장",
-    "니스 항구": None,
-    "오벨리스코": "부에노스아이레스 오벨리스크",
-    "카사 로사다": "카사 로사다",
-    "라 보카 카미니토": "카미니토",
-    "레콜레타 묘지": "레콜레타 묘지",
-    "콜론 극장": "콜론 극장",
-    "독립광장": None,
-    "산마르틴 공원": "헤네랄 산마르틴 공원",
-    "세로 데 라 글로리아": None,
-    "에스파냐 광장": None,
-    "멘도사 중앙시장": None,
     "시드니 오페라 하우스": "시드니 오페라 하우스",
     "하버 브리지": "시드니 하버 브리지",
     "본다이 비치": "본다이 비치",
@@ -205,6 +167,31 @@ WIKI_TITLES = {
     "브라이턴 비치": "브라이턴 비치"
 }
 
+# 한국어 위키백과에 사진/소개가 부족할 때 사용할 검증 대상 문서명
+# 영어 위키백과는 사진에만 사용하고, 소개글은 아래 한국어 문장으로 보완합니다.
+EN_WIKI_TITLES = {
+    "해동용궁사": "Haedong Yonggungsa",
+    "아라시야마 대나무숲": "Arashiyama",
+    "엠파이어 스테이트 빌딩": "Empire State Building",
+    "롬바드 스트리트": "Lombard Street (San Francisco)",
+    "팰리스 오브 파인 아츠": "Palace of Fine Arts",
+    "노트르담 대성당": "Notre-Dame de Paris",
+    "플린더스 스트리트역": "Flinders Street railway station",
+    "왕립 식물원": "Royal Botanic Gardens Victoria",
+}
+
+# 소개가 누락된 경우 제공하는 한국어 자체 작성 소개문
+FALLBACK_DESCRIPTIONS = {
+    "해동용궁사": "해동용궁사는 부산광역시 기장군의 바닷가에 자리한 사찰입니다. 바다와 맞닿은 절벽과 해안 풍경이 특징이며, 해돋이를 감상하기 위해 찾는 방문객도 많습니다.",
+    "아라시야마 대나무숲": "아라시야마 대나무숲은 일본 교토 서쪽 아라시야마 지역의 대표적인 산책 명소입니다. 높게 자란 대나무 사이로 이어지는 길과 특유의 고요한 풍경으로 알려져 있습니다.",
+    "엠파이어 스테이트 빌딩": "엠파이어 스테이트 빌딩은 미국 뉴욕 맨해튼에 있는 대표적인 초고층 건축물입니다. 아르데코 양식의 외관과 도시 전경을 조망할 수 있는 전망대로 유명합니다.",
+    "롬바드 스트리트": "롬바드 스트리트는 미국 샌프란시스코에 있는 거리로, 특히 러시안 힐의 급경사 구간에 조성된 여러 개의 굽은 길로 유명합니다. 꽃과 주택이 어우러진 풍경이 관광 명소로 알려져 있습니다.",
+    "팰리스 오브 파인 아츠": "팰리스 오브 파인 아츠는 미국 샌프란시스코 마리나 지구에 있는 기념비적인 건축물입니다. 고전적인 원형 돔과 열주, 연못이 어우러져 사진 촬영과 산책 장소로 인기가 있습니다.",
+    "노트르담 대성당": "파리 노트르담 대성당은 프랑스 파리 시테섬에 자리한 고딕 양식의 대성당입니다. 섬세한 조각과 장미창, 두 개의 종탑 등으로 유명한 파리의 역사적 상징입니다.",
+    "플린더스 스트리트역": "플린더스 스트리트역은 호주 멜버른 도심의 주요 철도역입니다. 노란색 외벽과 돔, 시계가 있는 역사 건물은 멜버른을 상징하는 대표적인 건축물 중 하나입니다.",
+    "왕립 식물원": "멜버른 왕립 식물원은 호주 멜버른에 위치한 넓은 식물원입니다. 다양한 식물과 정원, 산책로, 호수가 조성되어 있어 자연을 관찰하고 휴식을 즐기기 좋은 장소입니다.",
+}
+
 HEADERS = {
     "User-Agent": "WorldTouristExplorer/1.0 (educational Streamlit project)",
     "Accept": "application/json"
@@ -212,83 +199,58 @@ HEADERS = {
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def get_wikipedia_data(place_name):
-    """
-    한국어 위키백과에서 관광지의
-    대표 사진, 한국어 설명, 문서 주소를 조회
-    """
-
-    title = WIKI_TITLES.get(place_name, place_name)
-
-    # 정확히 대응하는 문서가 없는 관광지는
-    # 다른 도시의 사진이나 설명을 잘못 가져오지 않음
-    if title is None:
+def query_wikipedia(title, language="ko"):
+    """해당 언어 위키백과의 문서 대표 사진·소개·링크 조회"""
+    if not title:
         return None, None, None
-
-    api_url = "https://ko.wikipedia.org/w/api.php"
-
-    params = {
-        "action": "query",
-        "format": "json",
-        "prop": "pageimages|extracts|info",
-        "titles": title,
-        "pithumbsize": 900,
-        "exintro": 1,
-        "explaintext": 1,
-        "exsectionformat": "plain",
-        "inprop": "url",
-        "redirects": 1
-    }
-
     try:
         response = requests.get(
-            api_url,
-            params=params,
-            headers=HEADERS,
-            timeout=15
+            f"https://{language}.wikipedia.org/w/api.php",
+            params={
+                "action": "query", "format": "json",
+                "prop": "pageimages|extracts|info", "titles": title,
+                "pithumbsize": 900, "exintro": 1,
+                "explaintext": 1, "inprop": "url", "redirects": 1
+            },
+            headers=HEADERS, timeout=12
         )
         response.raise_for_status()
-
-        data = response.json()
-        pages = data.get("query", {}).get("pages", {})
-
+        pages = response.json().get("query", {}).get("pages", {})
         for page in pages.values():
             if "missing" in page:
                 continue
-
-            image_url = page.get(
-                "thumbnail", {}
-            ).get("source")
-
-            description = page.get("extract", "").strip()
-
-            # 너무 긴 소개는 앞부분만 사용
-            if description:
-                paragraphs = [
-                    p.strip()
-                    for p in description.split("\n")
-                    if p.strip()
-                ]
-
-                description = "\n\n".join(paragraphs)
-
-                if len(description) > 700:
-                    shortened = description[:700]
-                    last_space = shortened.rfind(" ")
-
-                    if last_space > 400:
-                        shortened = shortened[:last_space]
-
-                    description = shortened.rstrip() + "…"
-
-            page_url = page.get("fullurl")
-
-            return image_url, description, page_url
-
+            return (page.get("thumbnail", {}).get("source"),
+                    page.get("extract", "").strip(), page.get("fullurl"))
     except (requests.RequestException, ValueError):
         pass
-
     return None, None, None
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_wikipedia_data(place_name):
+    """한국어 설명을 우선하고 사진만 영어 위키백과로 보완"""
+    ko_title = WIKI_TITLES.get(place_name, place_name)
+    image_url, description, page_url = query_wikipedia(ko_title, "ko")
+
+    # 해당 장소의 한국어 설명이 비어 있으면 직접 작성한 소개글 사용
+    if not description:
+        description = FALLBACK_DESCRIPTIONS.get(place_name)
+
+    # 영어 문서는 사진만 가져옴. 엉뚱한 영어 소개를 번역해 보여주지 않음
+    if not image_url and place_name in EN_WIKI_TITLES:
+        en_image, _, en_page_url = query_wikipedia(
+            EN_WIKI_TITLES[place_name], "en"
+        )
+        image_url = en_image
+        if not page_url:
+            page_url = en_page_url
+
+    if description and len(description) > 700:
+        shortened = description[:700]
+        last_space = shortened.rfind(" ")
+        description = (shortened[:last_space] if last_space > 400
+                       else shortened).rstrip() + "…"
+    return image_url, description, page_url
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -422,7 +384,7 @@ st.map(
 
 st.caption(
     "관광지 위치는 등록된 좌표를 기준으로 표시됩니다. "
-    "소개와 사진은 한국어 위키백과 자료를 활용합니다."
+    "사진은 위키백과 자료를 활용하며, 일부 소개글은 직접 작성한 보충 설명입니다."
 )
 
 
