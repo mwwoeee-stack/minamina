@@ -143,7 +143,6 @@ WIKI_TITLES = {
     "자유의 여신상": "자유의 여신상",
     "타임스 스퀘어": "타임스 스퀘어",
     "센트럴 파크": "센트럴 파크",
-    "엠파이어 스테이트 빌딩": "엠파이어 스테이트 빌딩",
     "브루클린 브리지": "브루클린 교",
     "금문교": "금문교",
     "알카트라즈섬": "알카트라즈섬",
@@ -167,11 +166,10 @@ WIKI_TITLES = {
     "브라이턴 비치": "브라이턴 비치"
 }
 
-# 사진을 영어 위키백과에서 추가로 검색할 관광지
+# 영어 위키백과 사진 대체 검색
 EN_WIKI_TITLES = {
     "해동용궁사": "Haedong Yonggungsa",
     "아라시야마 대나무숲": "Arashiyama",
-    "엠파이어 스테이트 빌딩": "Empire State Building",
     "롬바드 스트리트": "Lombard Street (San Francisco)",
     "팰리스 오브 파인 아츠": "Palace of Fine Arts",
     "노트르담 대성당": "Notre-Dame de Paris",
@@ -179,11 +177,10 @@ EN_WIKI_TITLES = {
     "왕립 식물원": "Royal Botanic Gardens Victoria"
 }
 
-# 위키백과 설명이 없을 때 사용할 한국어 설명
+# 한국어 보충 설명
 FALLBACK_DESCRIPTIONS = {
     "해동용궁사": "해동용궁사는 부산광역시 기장군의 바닷가에 자리한 사찰입니다. 바다와 맞닿은 절벽과 해안 풍경이 특징이며, 해돋이를 감상하기 위해 찾는 방문객도 많습니다.",
     "아라시야마 대나무숲": "아라시야마 대나무숲은 일본 교토 서쪽 아라시야마 지역의 대표적인 산책 명소입니다. 높게 자란 대나무 사이로 이어지는 길과 특유의 고요한 풍경으로 알려져 있습니다.",
-    "엠파이어 스테이트 빌딩": "엠파이어 스테이트 빌딩은 미국 뉴욕 맨해튼에 있는 대표적인 초고층 건축물입니다. 아르데코 양식의 외관과 도시 전경을 조망할 수 있는 전망대로 유명합니다.",
     "롬바드 스트리트": "롬바드 스트리트는 미국 샌프란시스코에 있는 거리로, 특히 러시안 힐의 급경사 구간에 조성된 여러 개의 굽은 길로 유명합니다.",
     "팰리스 오브 파인 아츠": "팰리스 오브 파인 아츠는 미국 샌프란시스코 마리나 지구에 있는 기념비적인 건축물입니다. 고전적인 원형 돔과 열주, 연못이 어우러져 있습니다.",
     "노트르담 대성당": "파리 노트르담 대성당은 프랑스 파리 시테섬에 자리한 고딕 양식의 대성당입니다. 섬세한 조각과 장미창, 두 개의 종탑으로 유명합니다.",
@@ -197,7 +194,7 @@ HEADERS = {
 }
 
 
-# 위키백과 API
+# 위키백과 정보 조회
 @st.cache_data(ttl=86400, show_spinner=False)
 def query_wikipedia(title, language="ko"):
     if not title:
@@ -240,43 +237,13 @@ def query_wikipedia(title, language="ko"):
     return None, None, None
 
 
-# 엠파이어 스테이트 빌딩 사진 추가 검색
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_empire_commons_photo():
-    try:
-        response = requests.get(
-            "https://commons.wikimedia.org/w/api.php",
-            params={
-                "action": "query",
-                "format": "json",
-                "prop": "imageinfo",
-                "titles": "File:The Empire State Building.jpg",
-                "iiprop": "url",
-                "iiurlwidth": 800
-            },
-            headers=HEADERS,
-            timeout=15
-        )
-        response.raise_for_status()
-
-        pages = response.json().get("query", {}).get("pages", {})
-
-        for page in pages.values():
-            info = page.get("imageinfo", [])
-            if info:
-                return info[0].get("thumburl") or info[0].get("url")
-
-    except (requests.RequestException, ValueError, KeyError, IndexError):
-        pass
-
-    return None
-
-
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_wikipedia_data(place_name):
     title = WIKI_TITLES.get(place_name, place_name)
 
-    image_url, description, page_url = query_wikipedia(title, "ko")
+    image_url, description, page_url = query_wikipedia(
+        title, "ko"
+    )
 
     if not description:
         description = FALLBACK_DESCRIPTIONS.get(place_name)
@@ -377,56 +344,83 @@ st.write(f"**국가:** {country}")
 st.write(f"**도시:** {city}")
 
 with st.spinner("관광지 정보를 불러오는 중입니다..."):
-    image_url, description, page_url = get_wikipedia_data(place_name)
+    image_url, description, page_url = get_wikipedia_data(
+        place_name
+    )
     image_data = download_image(image_url)
 
-    if not image_data and place_name == "엠파이어 스테이트 빌딩":
-        commons_url = get_empire_commons_photo()
-        image_data = download_image(commons_url)
 
-        if image_data:
-            image_url = commons_url
+# -------------------------
+# 사진과 소개글 좌우 배치
+# -------------------------
 
-st.subheader("📸 관광지 사진")
+photo_col, info_col = st.columns(
+    [1, 1.6],
+    gap="large"
+)
 
-if image_data:
-    st.image(
-        image_data,
-        caption=f"{place_name} - 위키백과 / Wikimedia Commons",
-        use_container_width=True
-    )
-    st.caption("사진 출처: 위키백과 / Wikimedia Commons")
-else:
-    st.info("현재 이 관광지의 사진을 불러올 수 없습니다.")
+# 왼쪽: 작은 관광지 사진
+with photo_col:
+    st.subheader("📸 관광지 사진")
 
-st.subheader("📖 관광지 소개")
-
-if description:
-    st.write(description)
-
-    if page_url:
-        st.link_button(
-            "📚 위키백과에서 자세히 보기",
-            page_url
+    if image_data:
+        st.image(
+            image_data,
+            caption=place_name,
+            use_container_width=True
         )
-else:
-    st.info("현재 이 관광지의 한국어 소개를 불러올 수 없습니다.")
+        st.caption(
+            "사진 출처: 위키백과 / Wikimedia Commons"
+        )
+    else:
+        st.info(
+            "현재 이 관광지의 사진을 불러올 수 없습니다."
+        )
 
+# 오른쪽: 한국어 관광지 설명
+with info_col:
+    st.subheader("📖 관광지 소개")
+
+    if description:
+        st.write(description)
+
+        if page_url:
+            st.link_button(
+                "📚 위키백과에서 자세히 보기",
+                page_url
+            )
+    else:
+        st.info(
+            "현재 이 관광지의 한국어 소개를 "
+            "불러올 수 없습니다."
+        )
+
+
+# -------------------------
+# 관광지 위치 지도
+# -------------------------
+
+st.divider()
 st.subheader("🗺️ 관광지 위치")
-st.map([{"lat": lat, "lon": lon}], zoom=13)
+
+st.map(
+    [{"lat": lat, "lon": lon}],
+    zoom=13
+)
 
 st.caption(
     "관광지 위치는 등록된 좌표를 기준으로 표시됩니다. "
-    "사진은 위키백과 자료를 활용하며, 일부 소개글은 보충 설명입니다."
+    "사진은 위키백과 자료를 활용하며, "
+    "일부 소개글은 보충 설명입니다."
 )
 
 
 # -------------------------
-# 수학적 최적 여행 경로 계산
+# 최적 여행 경로 계산 함수
 # -------------------------
 
 def haversine_km(point_a, point_b):
-    """두 관광지 사이의 대권거리(km)"""
+    """두 관광지 사이의 대권거리 계산"""
     lat1, lon1 = point_a
     lat2, lon2 = point_b
 
@@ -447,7 +441,13 @@ def haversine_km(point_a, point_b):
     return 2 * radius * asin(sqrt(a))
 
 
-def route_distance(route, coordinates, return_to_start=False):
+def route_distance(
+    route,
+    coordinates,
+    return_to_start=False
+):
+    """방문 경로의 총거리 계산"""
+
     total = sum(
         haversine_km(coordinates[a], coordinates[b])
         for a, b in zip(route, route[1:])
@@ -462,9 +462,18 @@ def route_distance(route, coordinates, return_to_start=False):
     return total
 
 
-def find_shortest_route(selected, coordinates, start, return_to_start=False):
-    """모든 방문 순서를 비교하는 완전탐색 알고리즘"""
-    remaining = [name for name in selected if name != start]
+def find_shortest_route(
+    selected,
+    coordinates,
+    start,
+    return_to_start=False
+):
+    """순열과 완전탐색을 이용한 최적 경로 계산"""
+
+    remaining = [
+        name for name in selected
+        if name != start
+    ]
 
     best_route = None
     best_distance = float("inf")
@@ -520,8 +529,10 @@ else:
         key=f"route_roundtrip_{country}_{city}"
     )
 
-    if st.button("🔍 최단 경로 계산하기", type="primary"):
-
+    if st.button(
+        "🔍 최단 경로 계산하기",
+        type="primary"
+    ):
         best_route, best_distance = find_shortest_route(
             selected_places,
             places,
@@ -550,10 +561,14 @@ else:
             zip(display_route, display_route[1:]),
             start=1
         ):
-            distance = haversine_km(places[a], places[b])
+            distance = haversine_km(
+                places[a],
+                places[b]
+            )
 
             st.write(
-                f"{i}. {a} → {b}: **{distance:.2f} km**"
+                f"{i}. {a} → {b}: "
+                f"**{distance:.2f} km**"
             )
 
         # 지도에 표시할 관광지 좌표
@@ -567,13 +582,22 @@ else:
             for i, name in enumerate(best_route)
         ]
 
-        # 관광지 사이를 연결하는 선
+        # 관광지 사이 연결선
         line_points = [
             {
-                "source": [places[a][1], places[a][0]],
-                "target": [places[b][1], places[b][0]]
+                "source": [
+                    places[a][1],
+                    places[a][0]
+                ],
+                "target": [
+                    places[b][1],
+                    places[b][0]
+                ]
             }
-            for a, b in zip(display_route, display_route[1:])
+            for a, b in zip(
+                display_route,
+                display_route[1:]
+            )
         ]
 
         center_lat = (
@@ -630,7 +654,9 @@ else:
                     zoom=10,
                     pitch=0
                 ),
-                tooltip={"text": "{order}. {name}"},
+                tooltip={
+                    "text": "{order}. {name}"
+                },
                 map_style="light"
             ),
             use_container_width=True
@@ -641,10 +667,13 @@ else:
             "파란 선은 관광지 사이를 연결합니다."
         )
 
-        with st.expander("📐 경로 계산에 사용한 수학 원리"):
+        with st.expander(
+            "📐 경로 계산에 사용한 수학 원리"
+        ):
             st.write(
                 "하버사인 공식을 사용해 "
-                "두 지점의 위도와 경도로 대권거리를 계산합니다."
+                "두 지점의 위도와 경도로 "
+                "대권거리를 계산합니다."
             )
 
             st.latex(
@@ -655,14 +684,19 @@ else:
                 r"\right)"
             )
 
-            st.write("R = 6371 km, φ = 위도, λ = 경도")
+            st.write(
+                "R = 6371 km, φ = 위도, λ = 경도"
+            )
 
             st.write(
                 "출발지를 고정한 뒤 나머지 관광지의 "
-                "모든 방문 순서를 비교하는 완전탐색 방식입니다."
+                "모든 방문 순서를 비교하는 "
+                "완전탐색 방식입니다."
             )
 
-            count = factorial(len(selected_places) - 1)
+            count = factorial(
+                len(selected_places) - 1
+            )
 
             st.write(
                 f"이번 계산에서 비교한 방문 순서는 "
