@@ -590,7 +590,7 @@ else:
         route_map = folium.Map(
             location=[center_lat, center_lon],
             zoom_start=12,
-            tiles="CartoDB positron",
+            tiles="OpenStreetMap",
             control_scale=True
         )
 
