@@ -5,7 +5,8 @@ from PIL import Image
 from io import BytesIO
 from math import radians, sin, cos, asin, sqrt, factorial
 from itertools import permutations
-import pydeck as pdk
+import folium
+from streamlit_folium import st_folium
 
 st.set_page_config(
     page_title="세계 관광 명소 탐색",
@@ -571,100 +572,64 @@ else:
                 f"**{distance:.2f} km**"
             )
 
-        # 지도에 표시할 관광지 좌표
-        route_points = [
-            {
-                "name": name,
-                "order": str(i + 1),
-                "lat": places[name][0],
-                "lon": places[name][1]
-            }
-            for i, name in enumerate(best_route)
-        ]
-
-        # 관광지 사이 연결선
-        line_points = [
-            {
-                "source": [
-                    places[a][1],
-                    places[a][0]
-                ],
-                "target": [
-                    places[b][1],
-                    places[b][0]
-                ]
-            }
-            for a, b in zip(
-                display_route,
-                display_route[1:]
-            )
-        ]
-
-        center_lat = (
-            sum(p["lat"] for p in route_points)
-            / len(route_points)
-        )
-
-        center_lon = (
-            sum(p["lon"] for p in route_points)
-            / len(route_points)
-        )
-
-        layers = [
-            pdk.Layer(
-                "LineLayer",
-                line_points,
-                get_source_position="source",
-                get_target_position="target",
-                get_color=[20, 115, 230, 220],
-                get_width=5,
-                width_min_pixels=3,
-                pickable=False
-            ),
-            pdk.Layer(
-                "ScatterplotLayer",
-                route_points,
-                get_position="[lon, lat]",
-                get_fill_color=[230, 65, 65, 230],
-                get_radius=100,
-                radius_min_pixels=9,
-                pickable=True
-            ),
-            pdk.Layer(
-                "TextLayer",
-                route_points,
-                get_position="[lon, lat]",
-                get_text="order",
-                get_size=17,
-                get_color=[255, 255, 255],
-                get_alignment_baseline="center",
-                get_text_anchor="middle",
-                pickable=False
-            )
-        ]
-
+        # 클릭 가능한 깃발 마커가 있는 최적 경로 지도
         st.subheader("🗺️ 최적 경로 지도")
 
-        st.pydeck_chart(
-            pdk.Deck(
-                layers=layers,
-                initial_view_state=pdk.ViewState(
-                    latitude=center_lat,
-                    longitude=center_lon,
-                    zoom=10,
-                    pitch=0
-                ),
-                tooltip={
-                    "text": "{order}. {name}"
-                },
-                map_style="light"
-            ),
-            use_container_width=True
+        center_lat = sum(places[name][0] for name in best_route) / len(best_route)
+        center_lon = sum(places[name][1] for name in best_route) / len(best_route)
+
+        route_map = folium.Map(
+            location=[center_lat, center_lon],
+            zoom_start=12,
+            tiles="CartoDB positron",
+            control_scale=True
+        )
+
+        # 최적 경로를 파란색 선으로 연결
+        route_coordinates = [
+            [places[name][0], places[name][1]]
+            for name in display_route
+        ]
+        folium.PolyLine(
+            locations=route_coordinates,
+            color="#1473e6",
+            weight=5,
+            opacity=0.85,
+            tooltip="최적 여행 경로"
+        ).add_to(route_map)
+
+        # 각 관광지에 깃발을 꽂고 클릭 시 장소 정보 표시
+        for order, name in enumerate(best_route, start=1):
+            point_lat, point_lon = places[name]
+            popup_html = (
+                f"<div style='font-size:15px; min-width:150px;'>"
+                f"<b>🚩 {name}</b><br>"
+                f"방문 순서: {order}번째"
+                f"</div>"
+            )
+            folium.Marker(
+                location=[point_lat, point_lon],
+                popup=folium.Popup(popup_html, max_width=280),
+                tooltip=f"{order}. {name} (클릭해서 확인)",
+                icon=folium.Icon(color="red", icon="flag", prefix="fa")
+            ).add_to(route_map)
+
+        # 모든 깃발이 지도에 들어오도록 자동 확대 범위 설정
+        route_map.fit_bounds([
+            [places[name][0], places[name][1]]
+            for name in best_route
+        ], padding=(35, 35))
+
+        st_folium(
+            route_map,
+            height=500,
+            use_container_width=True,
+            key=f"optimal_route_map_{country}_{city}"
         )
 
         st.caption(
-            "빨간 원의 숫자는 방문 순서이며, "
-            "파란 선은 관광지 사이를 연결합니다."
+            "빨간 깃발을 클릭하면 관광지 이름과 방문 순서를 확인할 수 있습니다. "
+            "파란 선은 계산된 최적 경로를 나타냅니다."
         )
 
         with st.expander(
