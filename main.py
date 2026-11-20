@@ -271,6 +271,64 @@ def weather_text(code):
 
 
 # -------------------------
+# 날씨에 따른 관광 적합도 분석
+# -------------------------
+# 실내 활동이 가능한 관광지를 별도로 분류합니다.
+# 미분류 관광지는 야외 중심으로 간주하며, 이는 간단한 추천용 분류입니다.
+INDOOR_PLACES = {
+    "루브르 박물관", "롯데월드타워", "상하이 타워",
+    "퀸 빅토리아 마켓", "플린더스 스트리트역"
+}
+MIXED_PLACES = {
+    "창덕궁", "경복궁", "자금성", "금각사", "니조성",
+    "노트르담 대성당", "사크레쾨르 대성당", "센소지",
+    "메이지 신궁", "기요미즈데라", "후시미 이나리 신사",
+    "남산서울타워", "도쿄 타워", "도쿄 스카이트리",
+    "시드니 오페라 하우스", "타롱가 동물원"
+}
+
+
+def place_category(name):
+    if name in INDOOR_PLACES:
+        return "실내 중심"
+    if name in MIXED_PLACES:
+        return "실내·야외 혼합"
+    return "야외 중심"
+
+
+def suitability_score(name, rain, low_temp, high_temp, wind=None):
+    """날씨 예보와 관광지 유형을 조합한 교육용 휴리스틱 점수."""
+    category = place_category(name)
+    score = 100
+    reasons = []
+
+    if rain is not None:
+        if rain >= 70:
+            penalty = {"실내 중심": 5, "실내·야외 혼합": 20, "야외 중심": 40}[category]
+            reasons.append("강수확률이 매우 높음")
+        elif rain >= 40:
+            penalty = {"실내 중심": 0, "실내·야외 혼합": 10, "야외 중심": 25}[category]
+            reasons.append("비가 올 가능성이 있음")
+        else:
+            penalty = 0
+        score -= penalty
+
+    # 하루 최고/최저기온은 시간별 체감온도와 다르므로 보수적으로 반영합니다.
+    if high_temp is not None and high_temp >= 33:
+        score -= 5 if category == "실내 중심" else 20
+        reasons.append("폭염 가능성")
+    if low_temp is not None and low_temp <= -5:
+        score -= 5 if category == "실내 중심" else 15
+        reasons.append("추위 주의")
+
+    if wind is not None and wind >= 35:
+        score -= 5 if category == "실내 중심" else 15
+        reasons.append("강한 바람")
+
+    return max(0, min(100, score)), reasons
+
+
+# -------------------------
 # 관광지 검색 화면
 # -------------------------
 
@@ -432,6 +490,50 @@ try:
     st.caption(
         "날씨는 약 10분간 저장되며 실제 관측과 차이가 있을 수 있습니다. "
         "강수확률은 해당 날짜의 시간별 예보 중 최댓값입니다."
+    )
+
+    st.divider()
+    st.subheader("🌦️ 날씨 기반 여행 적합도 분석")
+    chosen_day = st.selectbox(
+        "분석할 날짜 (현지 기준)",
+        options=list(range(len(daily["time"]))),
+        format_func=lambda i: daily["time"][i],
+        key="suitability_day"
+    )
+    rain = daily["precipitation_probability_max"][chosen_day]
+    low = daily["temperature_2m_min"][chosen_day]
+    high = daily["temperature_2m_max"][chosen_day]
+    # 현재 풍속을 미래 날짜의 풍속으로 잘못 사용하지 않습니다.
+    wind = current.get("wind_speed_10m") if chosen_day == 0 else None
+
+    score, reasons = suitability_score(place_name, rain, low, high, wind)
+    st.write(f"**관광지 유형:** {place_category(place_name)}")
+    st.metric("여행 적합도 (자체 기준)", f"{score} / 100점")
+    st.progress(score / 100)
+    if score >= 80:
+        st.success("👍 날씨 조건이 비교적 양호해 방문을 고려하기 좋아요.")
+    elif score >= 60:
+        st.info("🌂 방문할 수 있지만 날씨에 맞춘 준비가 필요해요.")
+    else:
+        st.warning("☔ 날씨의 영향을 받을 수 있어 실내 대안을 고려해 보세요.")
+
+    if reasons:
+        st.caption("점수에 반영된 요인: " + ", ".join(reasons))
+
+    if score < 80 and place_category(place_name) != "실내 중심":
+        alternatives = [
+            name for name in places
+            if name != place_name and place_category(name) == "실내 중심"
+        ]
+        if alternatives:
+            st.write("**🏛️ 같은 도시의 실내 관광 대안:** " + ", ".join(alternatives))
+        else:
+            st.caption("현재 등록된 같은 도시 관광지 중 실내 중심 대안이 없습니다.")
+
+    st.caption(
+        "적합도는 강수확률·최고/최저기온·관광지 유형 등을 바탕으로 "
+        "직접 정한 규칙으로 계산한 참고 점수입니다. 공식 관광 적합도나 "
+        "방문 가능 여부를 의미하지 않습니다. 관광지 운영시간 및 휴관일은 별도 확인이 필요합니다."
     )
 except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
     st.warning("현재 날씨 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
