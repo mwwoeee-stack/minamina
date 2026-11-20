@@ -1,10 +1,10 @@
-
 import streamlit as st
 import requests
 from PIL import Image
 from io import BytesIO
 from math import radians, sin, cos, asin, sqrt, factorial
 from itertools import permutations
+from datetime import datetime, timedelta
 import folium
 from streamlit_folium import st_folium
 
@@ -303,6 +303,17 @@ def download_image(image_url):
 
     except (requests.RequestException, OSError, ValueError):
         return None
+
+
+def schedule_to_csv(rows):
+    import csv
+    output = BytesIO()
+    from io import StringIO
+    buffer = StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=list(rows[0].keys()))
+    writer.writeheader()
+    writer.writerows(rows)
+    return ("\ufeff" + buffer.getvalue()).encode("utf-8")
 
 
 # -------------------------
@@ -640,6 +651,145 @@ else:
         st.caption(
             "빨간 깃발을 클릭하면 관광지 이름과 방문 순서를 확인할 수 있습니다. "
             "파란 선은 계산된 최적 경로를 나타냅니다."
+        )
+
+        # -------------------------
+        # 일반 경로와 최적 경로 비교 분석
+        # -------------------------
+        st.divider()
+        st.subheader("📊 일반 경로와 최적 경로 비교")
+        st.caption("일반 경로는 선택 목록에 표시된 순서대로 출발지를 먼저 방문한 경로입니다.")
+
+        normal_route = [start_place] + [
+            name for name in selected_places if name != start_place
+        ]
+        normal_distance = route_distance(
+            normal_route, places, return_to_start
+        )
+        saved_km = max(0.0, normal_distance - best_distance)
+        saved_percent = (
+            saved_km / normal_distance * 100
+            if normal_distance > 0 else 0.0
+        )
+
+        comparison_col1, comparison_col2, comparison_col3 = st.columns(3)
+        comparison_col1.metric("일반 경로", f"{normal_distance:.2f} km")
+        comparison_col2.metric("최적 경로", f"{best_distance:.2f} km")
+        comparison_col3.metric("절약 거리", f"{saved_km:.2f} km")
+        st.write(f"**거리 절약률: {saved_percent:.1f}%**")
+        st.bar_chart(
+            {"일반 경로": normal_distance, "최적 경로": best_distance},
+            horizontal=True
+        )
+        st.write("**일반 방문 순서:** " + " → ".join(
+            normal_route + ([normal_route[0]] if return_to_start else [])
+        ))
+        st.write("**최적 방문 순서:** " + " → ".join(display_route))
+        if saved_km < 0.001:
+            st.info("선택한 일반 경로도 최단 경로입니다. 방문 순서를 바꾸면 차이가 생길 수 있습니다.")
+
+        # -------------------------
+        # 최적 경로를 이용한 자동 여행 일정표
+        # -------------------------
+        st.divider()
+        st.subheader("📅 자동 여행 일정표")
+        st.caption(
+            "선택한 출발 시간, 평균 이동 속도, 관광지별 관람 시간을 바탕으로 "
+            "예상 도착 및 출발 시각을 계산합니다. 실제 교통시간과는 다릅니다."
+        )
+
+        schedule_col1, schedule_col2 = st.columns(2)
+        with schedule_col1:
+            departure_time = st.time_input(
+                "여행 시작 시각",
+                value=datetime.strptime("09:00", "%H:%M").time(),
+                key=f"departure_time_{country}_{city}"
+            )
+        with schedule_col2:
+            speed_kmh = st.number_input(
+                "가정할 평균 이동 속도 (km/h)",
+                min_value=1.0,
+                max_value=300.0,
+                value=30.0,
+                step=5.0,
+                key=f"speed_kmh_{country}_{city}"
+            )
+
+        default_stay = st.number_input(
+            "관광지별 기본 관람 시간 (분)",
+            min_value=0,
+            max_value=600,
+            value=60,
+            step=10,
+            key=f"default_stay_{country}_{city}"
+        )
+        with st.expander("관광지별 관람 시간 개별 설정 (선택)"):
+            stays = {}
+            for name in best_route:
+                stays[name] = st.number_input(
+                    f"{name} 관람 시간 (분)",
+                    min_value=0,
+                    max_value=600,
+                    value=int(default_stay),
+                    step=10,
+                    key=f"stay_{country}_{city}_{name}_{default_stay}"
+                )
+
+        current_time = datetime.combine(datetime.today().date(), departure_time)
+        schedule_rows = []
+        previous_name = None
+        total_move_minutes = 0.0
+        for idx, name in enumerate(best_route, start=1):
+            if previous_name is None:
+                move_km = 0.0
+                move_minutes = 0.0
+            else:
+                move_km = haversine_km(places[previous_name], places[name])
+                move_minutes = move_km / speed_kmh * 60
+                current_time += timedelta(minutes=move_minutes)
+            total_move_minutes += move_minutes
+            arrival = current_time
+            current_time += timedelta(minutes=stays[name])
+            schedule_rows.append({
+                "방문 순서": idx,
+                "관광지": name,
+                "이전 장소에서 거리(km)": round(move_km, 2),
+                "이동 시간(분)": round(move_minutes),
+                "도착 시각": arrival.strftime("%m/%d %H:%M"),
+                "관람 시간(분)": stays[name],
+                "출발 시각": current_time.strftime("%m/%d %H:%M")
+            })
+            previous_name = name
+
+        if return_to_start:
+            back_km = haversine_km(
+                places[best_route[-1]], places[best_route[0]]
+            )
+            back_minutes = back_km / speed_kmh * 60
+            total_move_minutes += back_minutes
+            current_time += timedelta(minutes=back_minutes)
+            schedule_rows.append({
+                "방문 순서": len(best_route) + 1,
+                "관광지": f"{best_route[0]} (복귀)",
+                "이전 장소에서 거리(km)": round(back_km, 2),
+                "이동 시간(분)": round(back_minutes),
+                "도착 시각": current_time.strftime("%m/%d %H:%M"),
+                "관람 시간(분)": 0,
+                "출발 시각": "-"
+            })
+
+        st.dataframe(schedule_rows, use_container_width=True, hide_index=True)
+        st.write(
+            f"**예상 종료 시각:** {current_time.strftime('%m/%d %H:%M')} · "
+            f"**총 이동 시간:** 약 {total_move_minutes:.0f}분 · "
+            f"**총 관람 시간:** {sum(stays.values())}분"
+        )
+        st.download_button(
+            "📥 일정표 CSV 다운로드",
+            data=schedule_to_csv(schedule_rows),
+            file_name=f"{city}_여행일정표.csv",
+            mime="text/csv",
+            key=f"download_schedule_{country}_{city}"
         )
 
         with st.expander(
