@@ -295,7 +295,11 @@ def place_category(name):
         return "실내·야외 혼합"
     return "야외 중심"
 
-
+# 날씨 기반 여행 적합도 계산 알고리즘
+# 관광지를 실내 중심, 야외 중심, 실내·야외 혼합형으로 분류한다.
+# 초기 점수를 100점으로 설정한 후 기상 조건에 따라 점수를 차감한다.
+# 관광지 유형에 따라 강수확률, 기온, 풍속의 영향을 다르게 반영한다.
+# 최종 점수는 0점 이상 100점 이하로 제한하여 반환한다.
 def suitability_score(name, rain, low_temp, high_temp, wind=None):
     """날씨 예보와 관광지 유형을 조합한 교육용 휴리스틱 점수."""
     category = place_category(name)
