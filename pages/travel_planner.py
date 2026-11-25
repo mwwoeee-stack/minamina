@@ -15,53 +15,56 @@ st.set_page_config(page_title="실제 이동 경로 여행 플래너", page_icon
 st.title("🧭 실제 이동 경로 기반 여행 플래너")
 st.caption("도로·보행로 데이터를 이용해 방문 순서를 최적화합니다. 실제 교통 상황 및 대중교통 시간은 반영되지 않습니다.")
 
-API_ROOT = "https://api.openrouteservice.org"
-PROFILES = {"🚶 도보": "foot-walking", "🚗 자동차": "driving-car"}
+API_ROOT = "https://api.geoapify.com/v1"
+PROFILES = {"🚶 도보": "walk", "🚗 자동차": "drive"}
 
 
 def api_key():
     try:
-        return st.secrets.get("ORS_API_KEY", "")
+        return str(st.secrets.get("GEOAPIFY_API_KEY", "")).strip()
     except (FileNotFoundError, KeyError):
         return ""
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_matrix(profile, names_and_coords, key):
-    """선택 지점 간 실제 이동거리(m)·이동시간(s) 행렬 조회."""
-    locations = [[lon, lat] for _, lat, lon in names_and_coords]
+    """관광지 사이의 방향별 이동거리(m)와 시간(s)을 조회한다."""
+    locations = [{"location": [lon, lat]} for _, lat, lon in names_and_coords]
     resp = requests.post(
-        f"{API_ROOT}/v2/matrix/{profile}",
-        headers={"Authorization": key, "Content-Type": "application/json"},
-        json={"locations": locations, "metrics": ["distance", "duration"], "resolve_locations": False},
+        f"{API_ROOT}/routematrix", params={"apiKey": key},
+        json={"mode": profile, "sources": locations, "targets": locations},
         timeout=45,
     )
     if not resp.ok:
-        raise ValueError(f"경로 행렬 조회 실패 (HTTP {resp.status_code}): {resp.text[:350]}")
-    data = resp.json()
-    distances, durations = data.get("distances"), data.get("durations")
+        raise ValueError(f"경로 행렬 조회 실패 (HTTP {resp.status_code})")
     n = len(locations)
-    if not distances or not durations or len(distances) != n or len(durations) != n:
-        raise ValueError("경로 API가 완전한 거리·시간 행렬을 반환하지 않았습니다.")
+    distances = [[None]*n for _ in range(n)]
+    durations = [[None]*n for _ in range(n)]
+    for i, row in enumerate(resp.json()["sources_to_targets"]):
+        for j, item in enumerate(row):
+            if item is None:
+                continue
+            d, t = item.get("distance"), item.get("time")
+            if isinstance(d, (int, float)) and isinstance(t, (int, float)) and d >= 0 and t >= 0:
+                distances[i][j], durations[i][j] = d, t
     return distances, durations
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_road_geometry(profile, start, end, key):
-    """한 구간의 실제 도로 경로 좌표 반환 (Folium의 위도, 경도 순서)."""
-    resp = requests.post(
-        f"{API_ROOT}/v2/directions/{profile}/geojson",
-        headers={"Authorization": key, "Content-Type": "application/json"},
-        json={"coordinates": [[start[1], start[0]], [end[1], end[0]]]},
-        timeout=45,
+    resp = requests.get(
+        f"{API_ROOT}/routing",
+        params={"waypoints": f"{start[0]},{start[1]}|{end[0]},{end[1]}",
+                "mode": profile, "apiKey": key}, timeout=45,
     )
     if not resp.ok:
-        raise ValueError(f"상세 경로 조회 실패 (HTTP {resp.status_code}): {resp.text[:250]}")
-    features = resp.json().get("features", [])
-    if not features:
+        raise ValueError(f"상세 경로 조회 실패 (HTTP {resp.status_code})")
+    geometry = resp.json()["features"][0]["geometry"]
+    coords = geometry["coordinates"]
+    lines = [coords] if geometry["type"] == "LineString" else coords
+    if not lines or not any(lines):
         raise ValueError("상세 도로 경로 좌표가 없습니다.")
-    coords = features[0]["geometry"]["coordinates"]
-    return [[lat, lon] for lon, lat, *rest in coords]
+    return [[[lat, lon] for lon, lat, *rest in line] for line in lines if line]
 
 
 def route_total(route, index, matrix):
@@ -115,9 +118,8 @@ start = st.selectbox("출발 관광지", selected, key=f"road_start_{country}_{c
 roundtrip = st.checkbox("마지막 관광지 방문 후 출발지로 돌아오기", key=f"road_round_{country}_{city}")
 
 key = api_key()
-if not key:
-    st.error("OpenRouteService API 키가 없습니다. Streamlit Cloud → App settings → Secrets에 ORS_API_KEY를 등록해 주세요.")
-    st.code('ORS_API_KEY = "여기에_발급받은_API_키"', language="toml")
+if not key or not key.isascii() or any(c.isspace() for c in key):
+    st.error("유효한 Geoapify API 키를 Streamlit Secrets의 GEOAPIFY_API_KEY에 등록해 주세요.")
     st.stop()
 
 settings = (country, city, mode, tuple(selected), start, roundtrip)
@@ -133,8 +135,8 @@ try:
     with st.spinner("실제 도로·보행로 거리와 시간을 조회하고 있습니다..."):
         distances, durations = get_matrix(profile, names_and_coords, key)
         best, best_seconds = optimal_route(selected, start, durations, roundtrip)
-except (requests.RequestException, ValueError, KeyError, IndexError) as exc:
-    st.error(f"실제 경로를 계산하지 못했습니다: {exc}")
+except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as exc:
+    st.error(f"실제 경로를 계산하지 못했습니다: {type(exc).__name__}")
     st.info("일부 국가나 섬 관광지는 도보·자동차로 연결되지 않을 수 있습니다. 다른 장소나 이동 수단을 선택해 주세요.")
     st.stop()
 
@@ -168,12 +170,13 @@ all_geometry = []
 map_errors = []
 for a_name, b_name in zip(best_full, best_full[1:]):
     try:
-        segment = get_road_geometry(profile, places[a_name], places[b_name], key)
-        folium.PolyLine(segment, color="#1473e6", weight=5, opacity=0.85,
-                        tooltip=f"{a_name} → {b_name}").add_to(route_map)
-        all_geometry.extend(segment)
-    except (requests.RequestException, ValueError, KeyError, IndexError) as exc:
-        map_errors.append(f"{a_name} → {b_name}: {exc}")
+        segments = get_road_geometry(profile, places[a_name], places[b_name], key)
+        for segment in segments:
+            folium.PolyLine(segment, color="#1473e6", weight=5, opacity=0.85,
+                            tooltip=f"{a_name} → {b_name}").add_to(route_map)
+            all_geometry.extend(segment)
+    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as exc:
+        map_errors.append(f"{a_name} → {b_name}: {type(exc).__name__}")
 for order, name in enumerate(best, 1):
     lat, lon = places[name]
     popup = f"<b>🚩 {html.escape(name)}</b><br>방문 순서: {order}번째"
@@ -257,7 +260,7 @@ st.write(f"**예상 종료 시각:** {now.strftime('%m/%d %H:%M')} · "
          f"**총 이동시간:** 약 {travel_seconds / 60:.0f}분 · "
          f"**총 관람시간:** {sum(stays.values())}분")
 st.download_button("📥 일정표 CSV 다운로드", csv_bytes(rows),
-                   file_name=f"{city}_{'도보' if profile == 'foot-walking' else '자동차'}_여행일정표.csv",
+                   file_name=f"{city}_{'도보' if profile == 'walk' else '자동차'}_여행일정표.csv",
                    mime="text/csv")
 with st.expander("📐 경로 계산에 사용한 알고리즘"):
     st.write("관광지 좌표로 실제 도로·보행로 이동거리와 이동시간 행렬을 조회합니다. "
