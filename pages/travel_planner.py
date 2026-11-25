@@ -1,3 +1,8 @@
+# 실제 도로 기반 관광지 최적 경로 탐색
+# 직선거리 계산의 한계를 보완하기 위해 Geoapify API를 활용한다.
+# 도보와 자동차의 이동거리 및 예상 소요 시간을 조회한다.
+# 완전탐색을 통해 가능한 방문 순서별 총 이동시간을 비교한다.
+# 최적 경로를 지도에 표시하고 여행 일정표에 반영한다.
 import csv
 import html
 from datetime import datetime, timedelta
