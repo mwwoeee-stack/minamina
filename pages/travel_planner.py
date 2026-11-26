@@ -86,7 +86,6 @@ def route_total(route, index, matrix):
 # 각 경로의 총 예상 이동시간을 계산하고 최솟값을 찾는다.
 # 출발지 복귀 여부를 반영하여 최적 경로를 반환한다.
 def optimal_route(names, start, durations, return_to_start):
-def optimal_route(names, start, durations, return_to_start):
     """기존 완전탐색 유지: 총 이동시간 최소 경로 탐색."""
     index = {name: i for i, name in enumerate(names)}
     best_route, best_time = None, float("inf")
