@@ -8,6 +8,9 @@ st.set_page_config(
     layout="wide"
 )
 
+from design import apply_design
+apply_design()
+
 st.title("💱 환율 조회 및 여행 경비 환산")
 st.caption("최신 기준환율을 활용하여 여행 경비를 계산합니다.")
 
