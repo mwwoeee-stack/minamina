@@ -9,6 +9,9 @@ st.set_page_config(
     layout="wide"
 )
 
+from design import apply_design
+apply_design()
+
 st.title("🌏 세계 관광 명소 탐색 시스템")
 st.write(
     "국가와 도시를 선택하여 주요 관광지의 사진, 소개, "
