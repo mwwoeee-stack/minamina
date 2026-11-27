@@ -1,0 +1,8 @@
+# 전체 페이지 공통 블루 앤 화이트 테마
+[theme]
+base = "light"
+primaryColor = "#2563EB"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#EFF6FF"
+textColor = "#1E293B"
+font = "sans serif"
