@@ -17,6 +17,10 @@ from streamlit_folium import st_folium
 from tourist_data import TOURIST_DATA
 
 st.set_page_config(page_title="실제 이동 경로 여행 플래너", page_icon="🧭", layout="wide")
+
+from design import apply_design
+apply_design()
+
 st.title("🧭 실제 이동 경로 기반 여행 플래너")
 st.caption("도로·보행로 데이터를 이용해 방문 순서를 최적화합니다. 실제 교통 상황 및 대중교통 시간은 반영되지 않습니다.")
 
